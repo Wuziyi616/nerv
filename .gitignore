@@ -1,3 +1,12 @@
+# OSX
+.DS_Store
+
+# vscode config
+.vscode/
+
+# Compiled python modules.
+*.pyc
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

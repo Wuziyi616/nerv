@@ -1,0 +1,8 @@
+cv2
+six
+numpy
+wandb
+pyyaml
+
+torch
+torchvision

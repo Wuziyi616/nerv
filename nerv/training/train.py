@@ -24,9 +24,9 @@ def main(params):
 
     model = BaseModel()
 
+    exp_name = f'{args.params}-fp16' if args.fp16 else args.params
+    ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
     if args.local_rank == 0:
-        exp_name = f'{args.params}-fp16' if args.fp16 else args.params
-        ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
         mkdir_or_exist(os.path.dirname(ckp_path))
 
         # on clusters, quota is limited
@@ -35,7 +35,8 @@ def main(params):
             os.system(r'ln -s /checkpoint/ziyiwu/{}/ {}'.format(
                 SLURM_JOB_ID, ckp_path))
 
-        wandb.init(project=params.project, name=exp_name, id=exp_name)
+        wandb_name = f'{exp_name}-{SLURM_JOB_ID}'
+        wandb.init(project=params.project, name=wandb_name, id=wandb_name)
 
     method = BaseMethod(
         model,

@@ -1,6 +1,7 @@
 import os
 import wandb
 import numpy as np
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -93,15 +94,16 @@ class BaseMethod(nn.Module):
         self.gpus = torch.cuda.device_count()
         assert self.gpus == self.params.gpus, 'GPU number not aligned'
 
-        if not self.use_ddp:
+        # DDP init
+        if self.use_ddp:
+            torch.cuda.set_device(self.local_rank)
+            torch.distributed.init_process_group('nccl', init_method='env://')
+            self.device = torch.device(f'cuda:{self.local_rank}')
+        else:
+            self.device = torch.device('cuda')
             assert self.gpus == 1, 'Multi-GPU training should use DDP'
             assert self.local_rank == 0, \
                 'local rank should be 0 in non DDP training'
-
-        # DDP init
-        torch.cuda.set_device(self.local_rank)
-        torch.distributed.init_process_group('nccl', init_method='env://')
-        self.device = torch.device(f'cuda:{self.local_rank}')
 
         # model to device
         self.model = self.model.to(self.device)
@@ -113,7 +115,7 @@ class BaseMethod(nn.Module):
         else:
             # this is only to enable calling `self.model.module`
             self.model = nn.parallel.DataParallel(
-                self.model, device_ids=self.gpus)
+                self.model, device_ids=list(range(self.gpus)))
 
     def _init_amp(self):
         """Init FP16 mixed precision training related settings."""
@@ -128,7 +130,7 @@ class BaseMethod(nn.Module):
         self.max_epochs = self.params.max_epochs
         self.print_iter = self.params.print_iter
         self.save_iter = int(
-            np.ceil(len(self.train_loader) * self.params.save_interval))
+            np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
@@ -153,8 +155,9 @@ class BaseMethod(nn.Module):
         self.load_ckp(ckp_path=resume_from)
 
         # run several val steps as sanity check
-        if san_check_val_step > 0:
-            self.validation_epoch(san_check_step=san_check_val_step)
+        if self.local_rank == 0 and san_check_val_step > 0:
+            self.validation_epoch(
+                self.model.module, san_check_step=san_check_val_step)
 
         for _ in range(self.epoch, self.max_epochs):
             self.training_epoch()
@@ -171,29 +174,41 @@ class BaseMethod(nn.Module):
 
         # use iter dataloader in order to save its state
         self.iter_train_loader = iter(self.train_loader)
-        for batch_idx, batch_data in enumerate(self.iter_train_loader):
-            # set the batch idx
-            self.epoch_it = batch_idx
+        train_steps = (
+            len(self.train_loader.sampler) -
+            self.train_loader.sampler.real_counter(
+                self.iter_train_loader)) // self.params.train_batch_size
+        with tqdm(total=train_steps, desc=f'Train epoch {self.epoch}') as t:
+            for batch_idx, batch_data in enumerate(self.iter_train_loader):
+                # set the batch idx
+                self.epoch_it = batch_idx
+                batch_data = {
+                    k: v.to(self.device)
+                    for k, v in batch_data.items()
+                }
 
-            self._training_step_start()
+                self._training_step_start()
 
-            # run model forward and calculate losses
-            if self.use_fp16:
-                with torch.autocast():
+                # run model forward and calculate losses
+                if self.use_fp16:
+                    with torch.cuda.amp.autocast():
+                        out_dict = self._training_step(batch_data)
+                else:
                     out_dict = self._training_step(batch_data)
-            else:
-                out_dict = self._training_step(batch_data)
 
-            # backward and optimize step
-            if self.use_fp16:
-                self._optimize_train_fp16(out_dict['loss'])
-            else:
-                self._optimize_train(out_dict['loss'])
+                # backward and optimize step
+                if self.use_fp16:
+                    self._optimize_train_fp16(out_dict['loss'])
+                else:
+                    self._optimize_train(out_dict['loss'])
 
-            # logging
-            self._log_train(out_dict)
+                # logging
+                self._log_train(out_dict)
 
-            self._training_step_end()
+                self._training_step_end()
+
+                t.set_postfix(loss=f"{out_dict['loss'].item():.4f}")
+                t.update(1)
 
         self._training_epoch_end()
 
@@ -251,8 +266,13 @@ class BaseMethod(nn.Module):
     def _training_epoch_start(self):
         """Things to do at the beginning of every training epoch."""
         self.optimizer.zero_grad()
-        self.model.train()
+        self.train()
         self.stats_dict = None
+        print(f'>>> Training epoch {self.epoch} start')
+
+        # sync DDP training processes at the end of epoch
+        if self.use_ddp:
+            torch.distributed.barrier()
 
     def _training_step_start(self):
         """Things to do at the beginning of every training step."""
@@ -264,7 +284,7 @@ class BaseMethod(nn.Module):
             self.scheduler.step()
         self.it += 1
         if (self.epoch_it + 1) % self.save_iter == 0:
-            self.save_ckp()
+            self.save_ckp(save_loader=True)
 
         # sync DDP training processes at the end of epoch
         if self.use_ddp:
@@ -276,25 +296,27 @@ class BaseMethod(nn.Module):
             self.scheduler.step()
         self.epoch += 1
         self.stats_dict = None
+        self.save_ckp(save_loader=False)
 
         # run one epoch of validation after each training epoch
-        self.validation_epoch()
+        if self.local_rank == 0:
+            self.validation_epoch(self.model.module)
 
     @torch.no_grad()
-    def validation_epoch(self, san_check_step=-1):
+    def validation_epoch(self, model, san_check_step=-1):
         """Validate one epoch.
 
         We aggregate the avg of all statistics and only log once.
         """
-        # only do evaluation for rank 0
-        if self.local_rank != 0:
-            return
+        print('>>> Evaluating')
+        model.eval()
+        self.stats_dict = None
 
-        self._validation_epoch_start()
+        for batch_idx, batch_data in enumerate(
+                tqdm(self.val_loader, desc=f'Eval epoch {self.epoch}')):
+            batch_data = {k: v.to(self.device) for k, v in batch_data.items()}
 
-        for batch_idx, batch_data in enumerate(self.val_loader):
-            out_dict = self._validation_step(batch_data)
-
+            out_dict = model.loss_function(batch_data)
             self._accumulate_stats(out_dict)
 
             # if it's actually in sanity check
@@ -304,27 +326,7 @@ class BaseMethod(nn.Module):
         # log eval statistics
         out_dict = {f'val/{k}': np.mean(v) for k, v in self.stats_dict.items()}
         wandb.log(out_dict, step=self.it)
-
-        self._validation_epoch_end()
-
-    def _validation_step(self, batch):
-        """Returns a dict containing losses to log."""
-        val_loss = self.model.module.loss_function(batch)
-        return val_loss
-
-    def _validation_epoch_start(self):
-        """Things to do at the beginning of every validation epoch."""
-        self.model.eval()
         self.stats_dict = None
-
-    def _validation_epoch_end(self):
-        """Things to do at the end of every validation epoch."""
-        self.stats_dict = None
-        self.save_ckp()
-
-        # sync DDP training processes at the end of epoch
-        if self.use_ddp:
-            torch.distributed.barrier()
 
     def _setup_optimizer(self):
         self.optimizer, (self.scheduler, self.scheduler_method) = \
@@ -370,8 +372,8 @@ class BaseMethod(nn.Module):
         # need to gather all rank dataloader in DDP
         # all_gather only supports tensor, so we convert them into tensor
         sampler_state = indices + [counter]
-        sampler_state = torch.tensor(sampler_state)
-        gather_state = ddp_all_gather(sampler_state)
+        sampler_state = torch.tensor(sampler_state).to(self.device)
+        gather_state = ddp_all_gather(sampler_state).cpu()
         indices, counter = gather_state[:, :-1], gather_state[:, -1]
         # lists of shape [world_size, N], [world_size]
         indices, counter = indices.tolist(), counter.tolist()
@@ -385,14 +387,14 @@ class BaseMethod(nn.Module):
         }
 
     @torch.no_grad()
-    def save_ckp(self):
+    def save_ckp(self, save_loader=False):
         """Save state_dict of all self.modules.
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
         """
         # if at the middle of training, should save dataloader states
         # if in eval, no need to do so
-        if self.training:
+        if save_loader:
             train_sampler_states = self._gather_train_sampler_state()
 
         # only rank 0 process save ckp
@@ -411,7 +413,7 @@ class BaseMethod(nn.Module):
             ckp['scheduler_method'] = self.scheduler_method
         if self.use_fp16:
             ckp['grad_scaler'] = self.grad_scaler.state_dict()
-        if self.training:
+        if save_loader:
             ckp.update(train_sampler_states)
         torch.save(ckp, ckp_path)
 

@@ -1,5 +1,6 @@
 cv2
 six
+tqdm
 numpy
 wandb
 pyyaml

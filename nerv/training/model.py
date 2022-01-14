@@ -14,14 +14,19 @@ class BaseModel(nn.Module):
         pass
 
     def loss_function(self, data_dict):
+        """General warpper for loss calculation."""
         if not self.training:
             return self.eval_loss_function(data_dict)
         pass
 
-    def calc_train_loss(self):
+    def calc_train_loss(self, data_dict, out_dict):
         """Compute training loss."""
         pass
 
     @property
     def dtype(self):
+        pass
+
+    @property
+    def device(self):
         pass

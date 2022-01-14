@@ -1,12 +1,14 @@
 import os
-from torch._C import device
 import wandb
 import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 
 from nerv.utils.io import check_file_exist
+from nerv.utils.misc import ddp_all_gather
+from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
 
 
@@ -72,6 +74,7 @@ class BaseMethod(nn.Module):
 
         # FP16 mixed precision training
         self.use_fp16 = use_fp16
+        self._init_amp()
 
         # data
         self.train_loader = datamodule.train_loader
@@ -101,10 +104,12 @@ class BaseMethod(nn.Module):
         self.device = torch.device(f'cuda:{self.local_rank}')
 
         # model to device
-        self.model = self.model.to(device)
+        self.model = self.model.to(self.device)
         if self.use_ddp:
             self.model = nn.parallel.DistributedDataParallel(
-                self.model, device_ids=[self.local_rank])
+                self.model,
+                device_ids=[self.local_rank],
+                find_unused_parameters=self.params.ddp_unused_params)
         else:
             # this is only to enable calling `self.model.module`
             self.model = nn.parallel.DataParallel(
@@ -131,19 +136,22 @@ class BaseMethod(nn.Module):
         # construct optimizer and lr_scheduler
         self._setup_optimizer()
 
-        # automatically detect existing checkpoints
-        self.load_ckp()
-
     def forward(self, input, **kwargs):
         return self.model(input, **kwargs)
 
-    def fit(self, san_check_val_step=2):
+    def fit(self, resume_from='', san_check_val_step=2):
         """Train the model.
 
         Args:
-            san_check_val_step (int): run a few val steps to verify the model,
-                logging, checkpointing etc implementations.
+            resume_from (str, optional): pre-trained weight path.
+                Default: ''.
+            san_check_val_step (int, optional): run a few val steps to verify
+                the model, logging, checkpointing etc implementations.
+                Default: 2.
         """
+        # automatically detect existing checkpoints
+        self.load_ckp(ckp_path=resume_from)
+
         # run several val steps as sanity check
         if san_check_val_step > 0:
             self.validation_epoch(san_check_step=san_check_val_step)
@@ -161,7 +169,9 @@ class BaseMethod(nn.Module):
         """
         self._training_epoch_start()
 
-        for batch_idx, batch_data in enumerate(self.train_loader):
+        # use iter dataloader in order to save its state
+        self.iter_train_loader = iter(self.train_loader)
+        for batch_idx, batch_data in enumerate(self.iter_train_loader):
             # set the batch idx
             self.epoch_it = batch_idx
 
@@ -255,6 +265,8 @@ class BaseMethod(nn.Module):
         self.it += 1
         if (self.epoch_it + 1) % self.save_iter == 0:
             self.save_ckp()
+
+        # sync DDP training processes at the end of epoch
         if self.use_ddp:
             torch.distributed.barrier()
 
@@ -289,6 +301,7 @@ class BaseMethod(nn.Module):
             if san_check_step > 0 and batch_idx + 1 >= san_check_step:
                 break
 
+        # log eval statistics
         out_dict = {f'val/{k}': np.mean(v) for k, v in self.stats_dict.items()}
         wandb.log(out_dict, step=self.it)
 
@@ -306,8 +319,12 @@ class BaseMethod(nn.Module):
 
     def _validation_epoch_end(self):
         """Things to do at the end of every validation epoch."""
-        self.save_ckp()
         self.stats_dict = None
+        self.save_ckp()
+
+        # sync DDP training processes at the end of epoch
+        if self.use_ddp:
+            torch.distributed.barrier()
 
     def _setup_optimizer(self):
         self.optimizer, (self.scheduler, self.scheduler_method) = \
@@ -320,6 +337,7 @@ class BaseMethod(nn.Module):
         """Returns an optimizer, a scheduler and its frequency (step/epoch)."""
         pass
 
+    @torch.no_grad()
     def _accumulate_stats(self, stats_dict):
         """Append stats in `stats_dict` to `self.stats_dict`.
 
@@ -331,17 +349,57 @@ class BaseMethod(nn.Module):
             for k, v in stats_dict.items():
                 self.stats_dict[k].append(v.item())
 
-    def save_ckp(self, ckp_path=None):
+    @torch.no_grad()
+    def _gather_train_sampler_state(self):
+        """Gather the state for self.train_loader across DDP."""
+        sampler_state = self.train_loader.sampler.state_dict(
+            self.iter_train_loader)
+        indices = sampler_state['indices']  # a list of int
+        counter = sampler_state['counter']  # an int
+        assert is_list_of(indices, int) and isinstance(counter, int)
+
+        # not in DDP, directly get one and return
+        if not self.use_ddp:
+            return {
+                'rank0_train_sampler': {
+                    'indices': indices,
+                    'counter': counter
+                },
+            }
+
+        # need to gather all rank dataloader in DDP
+        # all_gather only supports tensor, so we convert them into tensor
+        sampler_state = indices + [counter]
+        sampler_state = torch.tensor(sampler_state)
+        gather_state = ddp_all_gather(sampler_state)
+        indices, counter = gather_state[:, :-1], gather_state[:, -1]
+        # lists of shape [world_size, N], [world_size]
+        indices, counter = indices.tolist(), counter.tolist()
+        assert len(indices) == len(counter) == dist.get_world_size()
+        return {
+            f'rank{i}_train_sampler': {
+                'indices': indices[i],
+                'counter': counter[i]
+            }
+            for i in range(len(counter))
+        }
+
+    @torch.no_grad()
+    def save_ckp(self):
         """Save state_dict of all self.modules.
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
         """
-        # only save model for rank 0
+        # if at the middle of training, should save dataloader states
+        # if in eval, no need to do so
+        if self.training:
+            train_sampler_states = self._gather_train_sampler_state()
+
+        # only rank 0 process save ckp
         if self.local_rank != 0:
             return
 
-        if ckp_path is None:
-            ckp_path = os.path.join(self.ckp_path, f'model_{self.it}.pth')
+        ckp_path = os.path.join(self.ckp_path, f'model_{self.it}.pth')
         ckp = {
             'state_dict': self.model.module.state_dict(),
             'opt_state_dict': self.optimizer.state_dict(),
@@ -353,7 +411,11 @@ class BaseMethod(nn.Module):
             ckp['scheduler_method'] = self.scheduler_method
         if self.use_fp16:
             ckp['grad_scaler'] = self.grad_scaler.state_dict()
+        if self.training:
+            ckp.update(train_sampler_states)
+        torch.save(ckp, ckp_path)
 
+    @torch.no_grad()
     def load_ckp(self, ckp_path=None, auto_detect=True):
         """Load from checkpoint.
 
@@ -386,3 +448,8 @@ class BaseMethod(nn.Module):
             self.scheduler_method = ckp['scheduler_method']
         if self.use_fp16:
             self.grad_scaler.load_state_dict(ckp['grad_scaler'])
+        # should consider loading data sampler
+        if 'rank0_train_sampler' in ckp.keys():
+            print('INFO: loading train loader state')
+            self.train_loader.sampler.load_state_dict(
+                ckp[f'rank{self.local_rank}_train_sampler'])

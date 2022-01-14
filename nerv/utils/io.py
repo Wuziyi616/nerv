@@ -148,6 +148,12 @@ def check_file_exist(filename, msg_tmpl='file "{}" not exist:'):
         raise FileNotFoundError(msg_tmpl.format(filename))
 
 
+def check_dir_exist(dirname, msg_tmpl='dir "{}" not exist:'):
+    """Check whether a file exists."""
+    if not path.isdir(dirname):
+        raise FileNotFoundError(msg_tmpl.format(dirname))
+
+
 def mkdir_or_exist(dir_name):
     """Create a new directory if not existed."""
     if not path.isdir(dir_name):

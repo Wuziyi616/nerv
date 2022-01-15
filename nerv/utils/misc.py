@@ -89,13 +89,3 @@ def convert4save(array, is_video=False):
         return _convert4save_video(array)
     else:
         return _convert4save_img(array)
-
-
-def ddp_all_gather(tensor):
-    """Warpper function for torch.distributed.all_gather().
-    Automatically create an empty list for gathering and stack the result.
-    """
-    output = [torch.empty_like(tensor) for _ in range(dist.get_world_size())]
-    dist.all_gather(output, tensor)
-    output = torch.stack(output, dim=0)
-    return output

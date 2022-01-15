@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.distributed as dist
 
 from nerv.utils.io import check_file_exist
-from nerv.utils.misc import ddp_all_gather
+from nerv.utils.misc import ddp_all_gather, AverageMeter
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
 
@@ -131,6 +131,7 @@ class BaseMethod(nn.Module):
         self.print_iter = self.params.print_iter
         self.save_iter = int(
             np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
+        self.eval_interval = self.params.eval_interval
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
@@ -180,6 +181,7 @@ class BaseMethod(nn.Module):
                 self.iter_train_loader)) // self.params.train_batch_size
         with tqdm(total=train_steps, desc=f'Train epoch {self.epoch}') as t:
             for batch_idx, batch_data in enumerate(self.iter_train_loader):
+                torch.cuda.empty_cache()
                 # set the batch idx
                 self.epoch_it = batch_idx
                 batch_data = {
@@ -189,18 +191,8 @@ class BaseMethod(nn.Module):
 
                 self._training_step_start()
 
-                # run model forward and calculate losses
-                if self.use_fp16:
-                    with torch.cuda.amp.autocast():
-                        out_dict = self._training_step(batch_data)
-                else:
-                    out_dict = self._training_step(batch_data)
-
-                # backward and optimize step
-                if self.use_fp16:
-                    self._optimize_train_fp16(out_dict['loss'])
-                else:
-                    self._optimize_train(out_dict['loss'])
+                # model forward, loss computation, backward and optimize
+                out_dict = self._training_step(batch_data)
 
                 # logging
                 self._log_train(out_dict)
@@ -212,28 +204,34 @@ class BaseMethod(nn.Module):
 
         self._training_epoch_end()
 
-    def _training_step(self, batch):
-        """Returns a dict containing 'loss' to apply optimizer on.
-        The values in the dict will be logged to wandb.
-        """
-        train_loss = self.model.module.loss_function(batch)
+    def _loss_function(self, batch_data):
+        """Compute and aggregate losses."""
+        out_dict = self.model.module.loss_function(batch_data)
+        assert 'loss' not in out_dict.keys()
         loss = torch.tensor(0.).to(self.device)
-        for loss_name, loss_value in train_loss.items():
-            assert loss_name.endswith('_loss')
+        for loss_name, loss_value in out_dict.items():
+            if not loss_name.endswith('_loss'):
+                continue
             loss = loss + loss_value * eval(f'self.params.{loss_name}_w')
-        train_loss['loss'] = loss
-        return train_loss
+        out_dict['loss'] = loss
+        return out_dict
 
-    def _optimize_train(self, loss):
-        """Clip the gradient of model."""
+    def _training_step_fp32(self, batch_data):
+        """Loss backward and optimize in the normal FP32 setting."""
+        out_dict = self._loss_function(batch_data)
+        loss = out_dict['loss']
         loss.backward()
         if self.clip_grad > 0.:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
         self.optimizer.zero_grad()
+        return out_dict
 
-    def _optimize_train_fp16(self, loss):
-        """Clip the gradient of model."""
+    def _training_step_fp16(self, batch_data):
+        """Loss backward and optimize in FP16 mixed precision setting."""
+        with torch.cuda.amp.autocast():
+            out_dict = self._loss_function(batch_data)
+        loss = out_dict['loss']
         self.grad_scaler.scale(loss).backward()
         if self.clip_grad > 0.:
             self.grad_scaler.unscale_(self.optimizer)
@@ -241,6 +239,15 @@ class BaseMethod(nn.Module):
         self.grad_scaler.step(self.optimizer)
         self.grad_scaler.update()
         self.optimizer.zero_grad()
+        return out_dict
+
+    def _training_step(self, batch_data):
+        """Returns a dict containing 'loss' to apply optimizer on.
+        The values in the dict will be logged to wandb.
+        """
+        if self.use_fp16:
+            return self._training_step_fp16(batch_data)
+        return self._training_step_fp32(batch_data)
 
     def _log_train(self, out_dict):
         """Log statistics in training to wandb."""
@@ -249,14 +256,12 @@ class BaseMethod(nn.Module):
             return
 
         # accumulate results till print interval
+        self._accumulate_stats(out_dict)
+
         if (self.epoch_it + 1) % self.print_iter != 0:
-            self._accumulate_stats(out_dict)
             return
 
-        out_dict = {
-            f'train/{k}': np.mean(v)
-            for k, v in self.stats_dict.items()
-        }
+        out_dict = {f'train/{k}': v.avg for k, v in self.stats_dict.items()}
         out_dict['train/epoch'] = self.epoch
         out_dict['train/it'] = self.it
         out_dict['train/lr'] = get_lr(self.optimizer)
@@ -299,7 +304,7 @@ class BaseMethod(nn.Module):
         self.save_ckp(save_loader=False)
 
         # run one epoch of validation after each training epoch
-        if self.local_rank == 0:
+        if self.local_rank == 0 and (self.epoch + 1) % self.eval_interval == 0:
             self.validation_epoch(self.model.module)
 
     @torch.no_grad()
@@ -307,6 +312,10 @@ class BaseMethod(nn.Module):
         """Validate one epoch.
 
         We aggregate the avg of all statistics and only log once.
+
+        According to a discussion, in DDP eval we should pass the inner module
+            of DDPModel for eval to prevent hanging.
+        See: https://discuss.pytorch.org/t/torch-distributed-barrier-hangs-in-ddp/114522.  # noqa
         """
         print('>>> Evaluating')
         model.eval()
@@ -324,7 +333,7 @@ class BaseMethod(nn.Module):
                 break
 
         # log eval statistics
-        out_dict = {f'val/{k}': np.mean(v) for k, v in self.stats_dict.items()}
+        out_dict = {f'val/{k}': v.avg for k, v in self.stats_dict.items()}
         wandb.log(out_dict, step=self.it)
         self.stats_dict = None
 
@@ -345,11 +354,11 @@ class BaseMethod(nn.Module):
 
         We assume that each value in stats_dict is a torch scalar.
         """
+        bs = stats_dict.pop('batch_size', 1)
         if self.stats_dict is None:
-            self.stats_dict = {k: [v.item()] for k, v in stats_dict.items()}
-        else:
-            for k, v in stats_dict.items():
-                self.stats_dict[k].append(v.item())
+            self.stats_dict = {k: AverageMeter() for k in stats_dict.keys()}
+        for k, v in stats_dict.items():
+            self.stats_dict[k].update(v.item(), bs)
 
     @torch.no_grad()
     def _gather_train_sampler_state(self):
@@ -387,7 +396,7 @@ class BaseMethod(nn.Module):
         }
 
     @torch.no_grad()
-    def save_ckp(self, save_loader=False):
+    def save_ckp(self, save_loader=False, keep_num=5):
         """Save state_dict of all self.modules.
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
@@ -400,6 +409,17 @@ class BaseMethod(nn.Module):
         # only rank 0 process save ckp
         if self.local_rank != 0:
             return
+
+        # auto remove earlier ckps
+        ckp_files = os.listdir(self.ckp_path)
+        ckp_files = [ckp for ckp in ckp_files if ckp.endswith('.pth')]
+        if keep_num > 0 and len(ckp_files) >= keep_num:
+            ckp_files = sorted(
+                ckp_files,
+                key=lambda x: os.path.getmtime(os.path.join(self.ckp_path, x)))
+            del_ckp = ckp_files[:-(keep_num - 1)]
+            for x in del_ckp:
+                os.remove(os.path.join(self.ckp_path, x))
 
         ckp_path = os.path.join(self.ckp_path, f'model_{self.it}.pth')
         ckp = {

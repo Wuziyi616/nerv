@@ -8,6 +8,7 @@ class BaseParams:
     san_check_val_step = 2
     print_iter = 50
     save_interval = 1.0
+    eval_interval = 1
 
     # optimizer settings
     lr = 1e-3

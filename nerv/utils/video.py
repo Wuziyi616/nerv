@@ -65,11 +65,10 @@ class VideoReader(object):
 
     """
 
-    def __init__(self, filename, cache_capacity=10):
+    def __init__(self, filename, cache_capacity=-1):
         check_file_exist(filename, 'Video file not found: ' + filename)
         self._vcap = cv2.VideoCapture(filename)
-        assert cache_capacity > 0
-        self._cache = Cache(cache_capacity)
+        self._cache = Cache(cache_capacity) if cache_capacity > 0 else None
         self._position = 0
         # get basic info
         self._width = int(self._vcap.get(CAP_PROP_FRAME_WIDTH))
@@ -136,7 +135,7 @@ class VideoReader(object):
         self._position = frame_id
 
     def read(self):
-        """Read the next frame
+        """Read the next frame.
 
         If the next frame have been decoded before and in the cache, then
         return it directly, otherwise decode and return it, put it in the cache.
@@ -188,16 +187,11 @@ class VideoReader(object):
                 self._cache.put(frame_id, img)
         return img
 
-    def current_frame(self):
-        """Get the current frame (frame that is just visited).
-
-        Returns:
-            np.ndarray or None: if the video is fresh, return None,
-                otherwise return the `self._position - 1` frame.
-        """
-        if self._position == 0:
-            return None
-        return self._cache.get(self._position - 1)
+    def read_video(self):
+        """Read the whole video as a list of images."""
+        self._set_real_position(0)
+        frames = [self.read() for _ in range(len(self))]
+        return frames
 
     def cvt2frames(self,
                    frame_dir,

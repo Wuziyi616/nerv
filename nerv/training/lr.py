@@ -25,7 +25,9 @@ def scale_lr(optimizer, scale):
 
 class CosineAnnealingWarmupRestarts(_LRScheduler):
     """CosineLR with Warmup.
-    https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
+
+    Code borrowed from:
+        https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
 
     Args:
         optimizer (Optimizer): Wrapped optimizer.
@@ -118,6 +120,79 @@ class CosineAnnealingWarmupRestarts(_LRScheduler):
                 self.step_in_cycle = epoch
 
         self.max_lr = self.base_max_lr * (self.gamma**self.cycle)
+        self.last_epoch = math.floor(epoch)
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group['lr'] = lr
+
+
+class LinearAnnealingWarmup(_LRScheduler):
+    """LinearLR with Warmup.
+
+    Usually used in Transformer (e.g. BERT) training.
+
+    Args:
+        optimizer (Optimizer): Wrapped optimizer.
+        total_steps (int): Total decay steps.
+        max_lr (float): Max learning rate after warmup. Default: 0.1.
+        min_lr (float): Min learning rate after linear decay. Default: 0.001.
+        warmup_steps (int): Linear warmup step size. Default: 0.
+        last_epoch (int): The index of last epoch. Default: -1.
+    """
+
+    def __init__(self,
+                 optimizer: torch.optim.Optimizer,
+                 total_steps: int,
+                 max_lr: float = 0.1,
+                 min_lr: float = 0.001,
+                 warmup_steps: int = 0,
+                 last_epoch: int = -1):
+        assert warmup_steps < total_steps
+
+        self.total_steps = total_steps  # first cycle step size
+        self.max_lr = max_lr  # max learning rate in the current cycle
+        self.min_lr = min_lr  # min learning rate
+        self.warmup_steps = warmup_steps  # warmup step size
+        self.cur_step = last_epoch  # step size of the current cycle
+
+        super(CosineAnnealingWarmupRestarts,
+              self).__init__(optimizer, last_epoch)
+
+        # set learning rate min_lr
+        self.init_lr()
+
+    def init_lr(self):
+        self.base_lrs = []
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.min_lr
+            self.base_lrs.append(self.min_lr)
+
+    def get_lr(self):
+        if self.cur_step == -1:
+            return self.base_lrs
+        elif self.cur_step < self.warmup_steps:
+            return [
+                (self.max_lr - base_lr) * self.cur_step / self.warmup_steps +
+                base_lr for base_lr in self.base_lrs
+            ]
+        else:
+            return [
+                base_lr + (self.max_lr - base_lr) *
+                (self.total_steps - self.cur_step) /
+                (self.total_steps - self.warmup_steps)
+                for base_lr in self.base_lrs
+            ]
+
+    def step(self, epoch=None):
+        if epoch is None:
+            epoch = self.last_epoch + 1
+            self.cur_step = self.cur_step + 1
+        else:
+            self.cur_step = epoch
+
+        # keep min_lr if exceeds total decay steps
+        if self.cur_step > self.total_steps:
+            self.cur_step = self.total_steps
+
         self.last_epoch = math.floor(epoch)
         for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
             param_group['lr'] = lr

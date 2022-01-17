@@ -20,3 +20,16 @@ class BaseParams:
     train_batch_size = 64
     val_batch_size = 64
     num_workers = 4
+
+    def to_dict(self):
+        all_vars = [var for var in dir(self) if not var.startswith('__')]
+        all_vars.remove('to_dict')
+        all_vars.remove('from_dict')
+        return {var: getattr(self, var) for var in all_vars}
+
+    @staticmethod
+    def from_dict(params_dict):
+        params = BaseParams()
+        for k, v in params_dict.items():
+            setattr(params, k, v)
+        return params

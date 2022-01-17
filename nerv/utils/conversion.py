@@ -70,6 +70,11 @@ def merge_list(in_list):
     return out_list
 
 
+def list2str(lst):
+    """Convert [a, b, ..., x] to 'a_b_..._x'."""
+    return '_'.join(str(item) for item in lst)
+
+
 def str2bool(var):
     """Convert string value into boolean value. Used in argparse flag.
 

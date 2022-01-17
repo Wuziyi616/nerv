@@ -6,6 +6,7 @@ try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
     from yaml import Loader, Dumper
+import glob
 from os import path
 
 
@@ -161,6 +162,7 @@ def mkdir_or_exist(dir_name):
 
 
 def scandir(dir_path, suffix=None):
+    """Find all files under `dir_path` with some specific suffix."""
     if suffix is not None and not isinstance(suffix, (str, tuple)):
         raise TypeError('"suffix" must be a string or tuple of strings')
     for entry in os.scandir(dir_path):
@@ -171,3 +173,15 @@ def scandir(dir_path, suffix=None):
             yield filename
         elif filename.endswith(suffix):
             yield filename
+
+
+def glob_all(dir_path, only_dir=False, sort=True):
+    """Similar to `scandir`, but return the entire path cat with dir_path."""
+    if only_dir:
+        pattern = path.join(dir_path, '*/')
+    else:
+        pattern = path.join(dir_path, '*')
+    results = glob.glob(pattern)
+    if sort:
+        results.sort()
+    return results

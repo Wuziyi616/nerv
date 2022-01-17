@@ -1,8 +1,13 @@
+import time
 import random
 import numpy as np
 
 import torch
-import torch.distributed as dist
+
+
+def datetime2str(form='%Y-%m-%d_%H-%M-%S'):
+    datetime = time.strftime(form, time.localtime())
+    return datetime
 
 
 def set_seed(seed=1, deterministic=False):

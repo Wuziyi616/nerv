@@ -8,7 +8,8 @@ import torch.nn as nn
 import torch.distributed as dist
 
 from nerv.utils.io import check_file_exist
-from nerv.utils.misc import ddp_all_gather, AverageMeter
+from nerv.utils.misc import AverageMeter
+from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
 

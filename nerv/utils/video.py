@@ -65,10 +65,11 @@ class VideoReader(object):
 
     """
 
-    def __init__(self, filename, cache_capacity=-1):
+    def __init__(self, filename, cache_capacity=-1, to_rgb=False):
         check_file_exist(filename, 'Video file not found: ' + filename)
         self._vcap = cv2.VideoCapture(filename)
         self._cache = Cache(cache_capacity) if cache_capacity > 0 else None
+        self._to_rgb = to_rgb  # convert img from GBR to RGB when reading
         self._position = 0
         # get basic info
         self._width = int(self._vcap.get(CAP_PROP_FRAME_WIDTH))
@@ -153,10 +154,14 @@ class VideoReader(object):
                     self._set_real_position(self._position)
                 ret, img = self._vcap.read()
                 if ret:
+                    if self._to_rgb:
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     self._cache.put(pos, img)
         else:
             ret, img = self._vcap.read()
         if ret:
+            if self._to_rgb:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             self._position = pos + 1
         return img
 
@@ -182,6 +187,8 @@ class VideoReader(object):
         self._set_real_position(frame_id)
         ret, img = self._vcap.read()
         if ret:
+            if self._to_rgb:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             self._position += 1
             if self._cache:
                 self._cache.put(frame_id, img)

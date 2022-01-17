@@ -51,7 +51,7 @@ def batch_cat_vec(tensor, value_vec, dim):
     """
     assert isinstance(tensor, torch.Tensor)
     assert isinstance(dim, int)
-    tensor_shape = tensor.shape
+    tensor_shape = list(tensor.shape)
     n = len(tensor_shape)
     if dim < 0:
         dim = n + dim
@@ -59,10 +59,11 @@ def batch_cat_vec(tensor, value_vec, dim):
         value_vec = torch.tensor(value_vec)
     value_vec = value_vec.type_as(tensor)
     # expand shape to match tensor
-    for dim in range(n):
-        if dim != dim:
-            value_vec = value_vec.unsqueeze(dim=dim)
-    value_vec = value_vec.expand_as(tensor)
+    for dim_ in range(n):
+        if dim_ != dim:
+            value_vec = value_vec.unsqueeze(dim=dim_)
+    tensor_shape[-1] = 1
+    value_vec = value_vec.repeat(tensor_shape)
     return torch.cat([tensor, value_vec], dim=dim)
 
 

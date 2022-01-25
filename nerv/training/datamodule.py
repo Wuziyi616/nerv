@@ -58,9 +58,10 @@ class StatefulSampler(sampler.Sampler, _StatefulSampler):
 
         # construct index
         if self.shuffle:
-            self.indices = torch.randperm(len(self.dataset))
+            indices = torch.randperm(len(self.dataset))
         else:
-            self.indices = torch.arange(len(self.dataset))
+            indices = torch.arange(len(self.dataset))
+        self.indices = indices.tolist()
 
     def __iter__(self):
         return self
@@ -137,12 +138,19 @@ class StatefulDistributedSampler(DistributedSampler, _StatefulSampler):
 
 
 class BaseDataModule:
+    """Base class for data loading, i.e. creating dataloaders from datasets."""
 
-    def __init__(self, params, train_set, val_set, use_ddp=False):
+    def __init__(self,
+                 params,
+                 train_set,
+                 val_set,
+                 use_ddp=False,
+                 collate_fn=None):
         self.params = params
         self.train_set = train_set
         self.val_set = val_set
         self.use_ddp = use_ddp
+        self.collate_fn = collate_fn
 
         self._train_loader, self._val_loader = None, None
 
@@ -168,9 +176,10 @@ class BaseDataModule:
                 batch_size=self.params.train_batch_size,
                 sampler=state_dist_sampler,
                 num_workers=self.params.num_workers,
+                collate_fn=self.collate_fn,
                 pin_memory=True,
                 drop_last=True,
-                persistent_workers=True,
+                persistent_workers=(self.params.num_workers > 0),
             )
         else:
             state_sampler = StatefulSampler(self.train_set, shuffle=True)
@@ -179,9 +188,10 @@ class BaseDataModule:
                 batch_size=self.params.train_batch_size,
                 sampler=state_sampler,
                 num_workers=self.params.num_workers,
+                collate_fn=self.collate_fn,
                 pin_memory=True,
                 drop_last=True,
-                persistent_workers=True,
+                persistent_workers=(self.params.num_workers > 0),
             )
 
         val_sampler = StatefulSampler(self.val_set, shuffle=False)
@@ -190,7 +200,8 @@ class BaseDataModule:
             batch_size=self.params.val_batch_size,
             sampler=val_sampler,
             num_workers=self.params.num_workers,
+            collate_fn=self.collate_fn,
             pin_memory=True,
             drop_last=False,
-            persistent_workers=True,
+            persistent_workers=(self.params.num_workers > 0),
         )

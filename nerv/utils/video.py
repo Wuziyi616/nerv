@@ -10,6 +10,7 @@ from cv2 import (CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS,
                  CAP_PROP_FRAME_COUNT, CAP_PROP_FOURCC, CAP_PROP_POS_FRAMES,
                  VideoWriter_fourcc)
 
+from nerv.utils.image import resize
 from nerv.utils.misc import convert4save
 from nerv.utils.io import check_file_exist, mkdir_or_exist, scandir
 
@@ -67,6 +68,7 @@ class VideoReader(object):
 
     def __init__(self, filename, cache_capacity=-1, to_rgb=False):
         check_file_exist(filename, 'Video file not found: ' + filename)
+        self.filename = filename
         self._vcap = cv2.VideoCapture(filename)
         self._cache = Cache(cache_capacity) if cache_capacity > 0 else None
         self._to_rgb = to_rgb  # convert img from GBR to RGB when reading
@@ -202,6 +204,7 @@ class VideoReader(object):
 
     def cvt2frames(self,
                    frame_dir,
+                   target_shape=None,
                    file_start=0,
                    filename_tmpl='{:06d}.jpg',
                    start=0,
@@ -210,6 +213,8 @@ class VideoReader(object):
 
         Args:
             frame_dir (str): output directory to store all the frame images.
+            target_shape (Tuple[int], optional): resize and save in this shape.
+                Default: None.
             file_start (int, optional): from which filename starts.
                 Default: 0.
             filename_tmpl (str, optional): filename template, with the index
@@ -235,6 +240,8 @@ class VideoReader(object):
                 break
             filename = path.join(frame_dir,
                                  filename_tmpl.format(i + file_start))
+            if target_shape is not None:
+                img = resize(img, target_shape)
             cv2.imwrite(filename, img)
 
     def __len__(self):

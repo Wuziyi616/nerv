@@ -143,6 +143,18 @@ def dump_obj(obj, file=None, format=None, **kwargs):
     return processors[format](obj, file, **kwargs)
 
 
+def strip_suffix(file):
+    """Return the filename without suffix.
+    E.g. 'xxx/video' for 'xxx/video.mp4'.
+
+    Args:
+        file (str): string to be processed.
+    """
+    assert isinstance(file, str)
+    suffix = file.split('.')[-1]
+    return file[:-(len(suffix) + 1)]
+
+
 def check_file_exist(filename, msg_tmpl='file "{}" not exist:'):
     """Check whether a file exists."""
     if not path.isfile(filename):

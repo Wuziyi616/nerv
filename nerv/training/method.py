@@ -34,12 +34,15 @@ class BaseMethod(nn.Module):
 
         # optimization
         `self.optimizer`: optimizer.
+        `self.grad_scaler`: used in FP16 mixed precision training.
         `self.scheduler`: lr scheduler.
         `self.scheduler_method`: determine how to adjust lr, 'step' or 'epoch'.
         `self.clip_grad`: clipping gradient value. Not clipping if <= 0.
 
         # data related
         `self.train_loader`: `datamodule.train_loader`.
+        `self.iter_train_loader`: `iter(self.train_loader)`, used for saving
+            data_loader's state in checkpoint.
         `self.val_loader`: `datamodule.val_loader`.
 
         # statistics
@@ -54,6 +57,10 @@ class BaseMethod(nn.Module):
         `self.params`: as `params`.
         `self.ckp_path`: as `ckp_path`.
         `self.local_rank`: as `local_rank`.
+        `self.use_ddp`: as `use_ddp`.
+        `self.use_fp16`: as `use_fp16`.
+        `self.gpus`: number of GPUs available, should equal to `params.gpus`.
+        `self.device`: device of current process, e.g. `cuda:0`.
 
     """
 
@@ -321,6 +328,7 @@ class BaseMethod(nn.Module):
         print('>>> Evaluating')
         model.eval()
         self.stats_dict = None
+        torch.cuda.empty_cache()
 
         for batch_idx, batch_data in enumerate(
                 tqdm(self.val_loader, desc=f'Eval epoch {self.epoch}')):
@@ -337,6 +345,7 @@ class BaseMethod(nn.Module):
         out_dict = {f'val/{k}': v.avg for k, v in self.stats_dict.items()}
         wandb.log(out_dict, step=self.it)
         self.stats_dict = None
+        torch.cuda.empty_cache()
 
     def _setup_optimizer(self):
         self.optimizer, (self.scheduler, self.scheduler_method) = \

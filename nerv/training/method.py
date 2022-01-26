@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.distributed as dist
 
 from nerv.utils.io import check_file_exist
@@ -12,6 +13,7 @@ from nerv.utils.misc import AverageMeter
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
+from nerv.models.utils import filter_wd_parameters
 
 
 class BaseMethod(nn.Module):
@@ -339,7 +341,9 @@ class BaseMethod(nn.Module):
 
             # if it's actually in sanity check
             if san_check_step > 0 and batch_idx + 1 >= san_check_step:
-                break
+                self.stats_dict = None
+                torch.cuda.empty_cache()
+                return
 
         # log eval statistics
         out_dict = {f'val/{k}': v.avg for k, v in self.stats_dict.items()}
@@ -348,6 +352,7 @@ class BaseMethod(nn.Module):
         torch.cuda.empty_cache()
 
     def _setup_optimizer(self):
+        """Construct optimizer and lr scheduler."""
         self.optimizer, (self.scheduler, self.scheduler_method) = \
             self._configure_optimizers()
         assert self.scheduler_method in ['step', 'epoch', '']
@@ -356,7 +361,25 @@ class BaseMethod(nn.Module):
 
     def _configure_optimizers(self):
         """Returns an optimizer, a scheduler and its frequency (step/epoch)."""
-        pass
+        lr = self.params.lr
+        wd = self.params.weight_decay
+        if wd > 0.:
+            params_dict = filter_wd_parameters(self.model)
+            params_list = [{
+                'params': params_dict['no_decay'],
+                'weight_decay': 0.,
+            }, {
+                'params': params_dict['decay'],
+                'weight_decay': wd,
+            }]
+            # use AdamW in weight_decay
+            optimizer = optim.AdamW(params_list, lr=lr)
+        else:
+            optimizer = optim.Adam(
+                filter(lambda p: p.requires_grad, self.model.parameters()),
+                lr=lr,
+                weight_decay=0.)
+        return optimizer, (None, '')
 
     @torch.no_grad()
     def _accumulate_stats(self, stats_dict):

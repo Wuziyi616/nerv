@@ -10,6 +10,29 @@ def datetime2str(form='%Y-%m-%d_%H-%M-%S'):
     return datetime
 
 
+def array_equal(a, b):
+    """Compare if two arrays are the same.
+
+    Args:
+        a/b: can be np.ndarray or torch.Tensor.
+    """
+    if a.shape != b.shape:
+        return False
+    try:
+        assert (a == b).all()
+        return True
+    except:
+        return False
+
+
+def array_in_list(array, lst):
+    """Judge whether an array is in a list."""
+    for v in lst:
+        if array_equal(array, v):
+            return True
+    return False
+
+
 def set_seed(seed=1, deterministic=False):
     """Set the random seed of the environment for reproducibility.
 

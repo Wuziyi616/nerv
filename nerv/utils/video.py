@@ -141,7 +141,7 @@ class VideoReader(object):
         """Read the next frame.
 
         If the next frame have been decoded before and in the cache, then
-        return it directly, otherwise decode and return it, put it in the cache.
+        return it directly, otherwise decode and return it, store in the cache.
 
         Returns:
             np.ndarray or None: return the frame if successful, otherwise None.

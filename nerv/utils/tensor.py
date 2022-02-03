@@ -3,14 +3,28 @@ import torch.distributed as dist
 
 
 def batch_gather(tensor, idx):
-    """Gather tensor by idx in batch.
+    """Gather tensor by idx in batch. Only gather 1 position in the last dim.
 
     Args:
         tensor (torch.Tensor): [N_1, N_2, ..., N_n].
-        idx (torch.Tensor): [N_1, ..., N_{k-1}, M], M could be != N_k.
+        idx (torch.Tensor): [N_1, ..., N_{k-1}].
 
     Returns:
-        torch.Tensor: same shape as idx.
+        torch.Tensor: [N_1, ..., N_{k-1}, N_{k+1}, ..., N_n].
+    """
+    gather_dim = len(idx.shape)
+    return batch_gather_k(tensor, idx.unsqueeze(-1)).squeeze(gather_dim)
+
+
+def batch_gather_k(tensor, idx):
+    """Gather tensor by idx in batch. The last dim is K positions to gather.
+
+    Args:
+        tensor (torch.Tensor): [N_1, N_2, ..., N_n].
+        idx (torch.Tensor): [N_1, ..., N_{k-1}, M], M could be any value.
+
+    Returns:
+        torch.Tensor: [N_1, ..., N_{k-1}, M, N_{k+1}, ..., N_n].
     """
     assert isinstance(tensor, torch.Tensor)
     assert isinstance(idx, (torch.LongTensor, torch.cuda.LongTensor))
@@ -33,7 +47,7 @@ def batch_gather(tensor, idx):
     view_shape = [-1] + list(tensor_shape[k - 1:])
     view_tensor = tensor.view(view_shape)
     view_idx = idx.view(-1, idx.shape[-1])
-    return batch_gather(view_tensor, view_idx).view(out_shape)
+    return batch_gather_k(view_tensor, view_idx).view(out_shape)
 
 
 def batch_cat_vec(tensor, value_vec, dim):

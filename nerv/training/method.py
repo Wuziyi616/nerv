@@ -275,6 +275,8 @@ class BaseMethod(nn.Module):
         out_dict['train/epoch'] = self.epoch
         out_dict['train/it'] = self.it
         out_dict['train/lr'] = get_lr(self.optimizer)
+        if self.use_fp16:
+            out_dict['train/fp16_loss_scale'] = self.grad_scaler.get_scale()
         wandb.log(out_dict, step=self.it)
         self.stats_dict = None
 
@@ -493,6 +495,7 @@ class BaseMethod(nn.Module):
         if not ckp_path:
             return
 
+        print(f'INFO: loading checkpoint {ckp_path}')
         check_file_exist(ckp_path)
         ckp = torch.load(ckp_path)
         self.it, self.epoch = ckp['it'], ckp['epoch']

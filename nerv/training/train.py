@@ -5,6 +5,8 @@ import importlib
 import argparse
 import wandb
 
+import torch
+
 from datamodule import BaseDataModule
 from method import BaseMethod
 from model import BaseModel
@@ -58,6 +60,7 @@ if __name__ == "__main__":
     parser.add_argument('--weight', type=str, default='', help='load weight')
     parser.add_argument('--fp16', action='store_true')
     parser.add_argument('--ddp', action='store_true')
+    parser.add_argument('--cudnn', action='store_true')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
     if args.params.endswith('.py'):
@@ -66,4 +69,6 @@ if __name__ == "__main__":
     params = params.BaseParams()
     SLURM_JOB_ID = os.environ.get('SLURM_JOB_ID')
     CHECKPOINT = './checkpoint/'
+    if args.cudnn:
+        torch.backends.cudnn.benchmark = True
     main(params)

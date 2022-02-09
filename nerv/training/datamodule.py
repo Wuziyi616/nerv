@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import DataLoader, sampler
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data._utils.collate import default_collate
 
 
 class _StatefulSampler:
@@ -145,7 +146,7 @@ class BaseDataModule:
                  train_set,
                  val_set,
                  use_ddp=False,
-                 collate_fn=None):
+                 collate_fn=default_collate):
         self.params = params
         self.train_set = train_set
         self.val_set = val_set

@@ -25,9 +25,9 @@ PARAMS=$5
 
 for repeat_idx in $(seq 1 $REPEAT)
 do
-    params="${PARAMS}-dup${repeat_idx}"
+    params="dup${repeat_idx}-${PARAMS}"
     cp $PARAMS $params
-    job_name="${JOB_NAME}-dup${repeat_idx}"
-    echo "./sbatch_run.sh $PARTITION $job_name $PY_FILE --params $params $PY_ARGS"
+    job_name="dup${repeat_idx}-${JOB_NAME}"
+    echo "./sbatch_run.sh $PARTITION $job_name $PY_FILE $DDP --params $params $PY_ARGS"
     ./sbatch_run.sh $PARTITION $job_name $PY_FILE $DDP --params $params $PY_ARGS
 done

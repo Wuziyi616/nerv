@@ -2,6 +2,7 @@ import os
 import wandb
 import numpy as np
 from tqdm import tqdm
+from datetime import timedelta
 
 import torch
 import torch.nn as nn
@@ -107,7 +108,8 @@ class BaseMethod(nn.Module):
         # DDP init
         if self.use_ddp:
             torch.cuda.set_device(self.local_rank)
-            torch.distributed.init_process_group('nccl', init_method='env://')
+            torch.distributed.init_process_group(
+                'nccl', init_method='env://', timeout=timedelta(hours=1))
             self.device = torch.device(f'cuda:{self.local_rank}')
         else:
             self.device = torch.device('cuda')
@@ -285,6 +287,29 @@ class BaseMethod(nn.Module):
         self.optimizer.zero_grad()
         self.train()
         self.stats_dict = None
+
+        # update some values in self.params depending on epoch number
+        all_vars = [
+            var for var in dir(self.params) if not var.startswith('__')
+            and not callable(getattr(self.params, var))
+        ]
+        for var in all_vars:
+            if var.endswith('_t') and f'{var[:-2]}_all' in all_vars:
+                var_name = var[:-2]
+                var_t = getattr(self.params, var)
+                var_all = getattr(self.params, f'{var_name}_all')
+                counter = 0
+                for t in var_t:
+                    if self.epoch >= t:
+                        counter += 1
+                    else:
+                        break
+                new_var = var_all[counter]
+                if getattr(self.params, var_name) == new_var:
+                    continue
+                setattr(self.params, var_name, new_var)
+                print(f'Changing params.{var_name} to {new_var}')
+
         print(f'>>> Training epoch {self.epoch} start')
 
         # sync DDP training processes at the end of epoch

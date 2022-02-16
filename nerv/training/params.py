@@ -5,10 +5,11 @@ class BaseParams:
     gpus = 1
     ddp_unused_params = False
     max_epochs = 100
-    san_check_val_step = 2
+    san_check_val_step = 2  # to verify code correctness
     print_iter = 50
-    save_interval = 1.0
-    eval_interval = 1
+    save_interval = 1.0  # save every (num_epoch_iters * save_interval) iters
+    eval_interval = 1  # should be int, number of epochs between each eval
+    save_epoch_end = False  # save ckp at the end of every epoch
 
     # optimizer settings
     lr = 1e-3
@@ -24,12 +25,13 @@ class BaseParams:
     # loss configs
     # we need to have `xxx_loss` as a key in the returned dict from the
     # `calc_train_loss` function in model
-    xxx_loss_w = 1.
+    # xxx_loss_w = 1.
 
     # we support changing some variables values with epoch
     # begin with 1., change to 10. at 40th epoch and then 100. at 80th epoch
-    var1_all = [1., 10., 100.]
-    var1_t = [40, 80]
+    # var1 = 1.
+    # var1_all = [1., 10., 100.]
+    # var1_t = [40, 80]
 
     def to_dict(self):
         all_vars = [var for var in dir(self) if not var.startswith('__')]

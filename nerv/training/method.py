@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
-from nerv.utils.io import check_file_exist
+from nerv.utils.io import check_file_exist, mkdir_or_exist
 from nerv.utils.misc import AverageMeter
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
@@ -53,6 +53,7 @@ class BaseMethod(nn.Module):
         `self.epoch`: total training epochs.
         `self.print_iter`: interval between print/log training statistics.
         `self.save_iter`: interval between saving checkpoint.
+        `self.save_epoch_end`: whether to save ckp at the end of every epoch.
         `self.epoch_it`: iteration number in one epoch.
         `self.stats_dict`: accumulate values. Can be used for avg.
 
@@ -109,7 +110,7 @@ class BaseMethod(nn.Module):
         if self.use_ddp:
             torch.cuda.set_device(self.local_rank)
             torch.distributed.init_process_group(
-                'nccl', init_method='env://', timeout=timedelta(hours=1))
+                'nccl', init_method='env://', timeout=timedelta(hours=2))
             self.device = torch.device(f'cuda:{self.local_rank}')
         else:
             self.device = torch.device('cuda')
@@ -144,6 +145,11 @@ class BaseMethod(nn.Module):
         self.save_iter = int(
             np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
         self.eval_interval = self.params.eval_interval
+        mkdir_or_exist(self.ckp_path)
+        self.save_epoch_end = self.params.save_epoch_end
+        if self.save_epoch_end:
+            self.epoch_ckp_path = os.path.join(self.ckp_path, 'epoch')
+            mkdir_or_exist(self.epoch_ckp_path)
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
@@ -496,6 +502,14 @@ class BaseMethod(nn.Module):
         if save_loader:
             ckp.update(train_sampler_states)
         torch.save(ckp, ckp_path)
+
+        # we may want to save ckp at the end of every epoch
+        # these ckps won't be restricted by `keep_num`
+        if not save_loader and self.save_epoch_end:
+            ckp_path = os.path.join(self.epoch_ckp_path,
+                                    f'model_{self.epoch}.pth')
+            torch.save(ckp, ckp_path)
+            print(f'INFO: saving checkpoint {ckp_path}')
 
     @torch.no_grad()
     def load_ckp(self, ckp_path=None, auto_detect=True):

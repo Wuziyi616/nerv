@@ -170,16 +170,28 @@ class BaseDataModule:
     def _build_dataloader(self):
         """Build training and validation data loaders."""
         if self.use_ddp:
-            state_dist_sampler = StatefulDistributedSampler(
+            train_state_dist_sampler = StatefulDistributedSampler(
                 self.train_set, shuffle=True, drop_last=True)
             self._train_loader = DataLoader(
                 self.train_set,
                 batch_size=self.params.train_batch_size,
-                sampler=state_dist_sampler,
+                sampler=train_state_dist_sampler,
                 num_workers=self.params.num_workers,
                 collate_fn=self.collate_fn,
                 pin_memory=True,
                 drop_last=True,
+                persistent_workers=(self.params.num_workers > 0),
+            )
+            val_dist_sampler = DistributedSampler(
+                self.val_set, shuffle=False, drop_last=False)
+            self._val_loader = DataLoader(
+                self.val_set,
+                batch_size=self.params.val_batch_size,
+                sampler=val_dist_sampler,
+                num_workers=self.params.num_workers,
+                collate_fn=self.collate_fn,
+                pin_memory=True,
+                drop_last=False,
                 persistent_workers=(self.params.num_workers > 0),
             )
         else:
@@ -194,15 +206,13 @@ class BaseDataModule:
                 drop_last=True,
                 persistent_workers=(self.params.num_workers > 0),
             )
-
-        val_sampler = StatefulSampler(self.val_set, shuffle=False)
-        self._val_loader = DataLoader(
-            self.val_set,
-            batch_size=self.params.val_batch_size,
-            sampler=val_sampler,
-            num_workers=self.params.num_workers,
-            collate_fn=self.collate_fn,
-            pin_memory=True,
-            drop_last=False,
-            persistent_workers=(self.params.num_workers > 0),
-        )
+            self._val_loader = DataLoader(
+                self.val_set,
+                batch_size=self.params.val_batch_size,
+                shuffle=False,
+                num_workers=self.params.num_workers,
+                collate_fn=self.collate_fn,
+                pin_memory=True,
+                drop_last=False,
+                persistent_workers=(self.params.num_workers > 0),
+            )

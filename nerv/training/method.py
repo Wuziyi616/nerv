@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
+from torchmetrics import MeanMetric
 
 from nerv.utils.io import check_file_exist, mkdir_or_exist
 from nerv.utils.misc import AverageMeter
@@ -145,11 +146,14 @@ class BaseMethod(nn.Module):
         self.save_iter = int(
             np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
         self.eval_interval = self.params.eval_interval
-        mkdir_or_exist(self.ckp_path)
         self.save_epoch_end = self.params.save_epoch_end
+
+        if self.local_rank == 0:
+            mkdir_or_exist(self.ckp_path)
         if self.save_epoch_end:
             self.epoch_ckp_path = os.path.join(self.ckp_path, 'epoch')
-            mkdir_or_exist(self.epoch_ckp_path)
+            if self.local_rank == 0:
+                mkdir_or_exist(self.epoch_ckp_path)
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
@@ -347,7 +351,7 @@ class BaseMethod(nn.Module):
         self.save_ckp(save_loader=False)
 
         # run one epoch of validation after each training epoch
-        if self.local_rank == 0 and (self.epoch + 1) % self.eval_interval == 0:
+        if (self.epoch + 1) % self.eval_interval == 0:
             self.validation_epoch(self.model.module)
 
     @torch.no_grad()
@@ -370,17 +374,19 @@ class BaseMethod(nn.Module):
             batch_data = {k: v.to(self.device) for k, v in batch_data.items()}
 
             out_dict = model.loss_function(batch_data)
-            self._accumulate_stats(out_dict)
+            self._accumulate_stats(out_dict, test=True)
 
             # if it's actually in sanity check
             if san_check_step > 0 and batch_idx + 1 >= san_check_step:
-                self.stats_dict = None
-                torch.cuda.empty_cache()
-                return
+                break
 
         # log eval statistics
-        out_dict = {f'val/{k}': v.avg for k, v in self.stats_dict.items()}
-        wandb.log(out_dict, step=self.it)
+        if self.local_rank == 0 and san_check_step <= 0:
+            out_dict = {
+                f'val/{k}': v.compute().item()
+                for k, v in self.stats_dict.items()
+            }
+            wandb.log(out_dict, step=self.it)
         self.stats_dict = None
         torch.cuda.empty_cache()
 
@@ -405,24 +411,42 @@ class BaseMethod(nn.Module):
                 'params': params_dict['decay'],
                 'weight_decay': wd,
             }]
-            # use AdamW in weight_decay
-            optimizer = optim.AdamW(params_list, lr=lr)
         else:
-            optimizer = optim.Adam(
-                filter(lambda p: p.requires_grad, self.model.parameters()),
-                lr=lr,
-                weight_decay=0.)
+            params_list = filter(lambda p: p.requires_grad,
+                                 self.model.parameters())
+
+        # we use Adam by default
+        if self.params.optimizer.lower() == 'adam':
+            if wd > 0.:
+                # use AdamW in weight_decay
+                optimizer = optim.AdamW(params_list, lr=lr)
+            else:
+                optimizer = optim.Adam(params_list, lr=lr, weight_decay=0.)
+        else:
+            if self.params.optimizer.lower() == 'sgd':
+                momentum = self.params.momentum if \
+                    hasattr(self.params, 'momentum') else 0.9
+                optimizer = optim.SGD(
+                    params_list, lr=lr, momentum=momentum, weight_decay=wd)
+            elif self.params.optimizer.lower() == 'rmsprop':
+                optimizer = optim.RMSprop(params_list, lr=lr, weight_decay=wd)
+            else:
+                raise NotImplementedError(
+                    f'unsupported optimizer {self.params.optimizer}')
         return optimizer, (None, '')
 
     @torch.no_grad()
-    def _accumulate_stats(self, stats_dict):
+    def _accumulate_stats(self, stats_dict, test=False):
         """Append stats in `stats_dict` to `self.stats_dict`.
 
         We assume that each value in stats_dict is a torch scalar.
+        In training time, only average over device:0, while at test time,
+            we need to gather metrics over all the device.
         """
         bs = stats_dict.pop('batch_size', 1)
         if self.stats_dict is None:
-            self.stats_dict = {k: AverageMeter() for k in stats_dict.keys()}
+            meter = MeanMetric if test else AverageMeter
+            self.stats_dict = {k: meter() for k in stats_dict.keys()}
         for k, v in stats_dict.items():
             self.stats_dict[k].update(v.item(), bs)
 

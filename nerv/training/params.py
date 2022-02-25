@@ -12,6 +12,7 @@ class BaseParams:
     save_epoch_end = False  # save ckp at the end of every epoch
 
     # optimizer settings
+    optimizer = 'Adam'
     lr = 1e-3
     weight_decay = 0.0
     clip_grad = -1

@@ -8,10 +8,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
-from torchmetrics import MeanMetric
 
 from nerv.utils.io import check_file_exist, mkdir_or_exist
-from nerv.utils.misc import AverageMeter
+from nerv.utils.misc import AverageMeter, MeanMetric
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
@@ -150,9 +149,8 @@ class BaseMethod(nn.Module):
 
         if self.local_rank == 0:
             mkdir_or_exist(self.ckp_path)
-        if self.save_epoch_end:
-            self.epoch_ckp_path = os.path.join(self.ckp_path, 'epoch')
-            if self.local_rank == 0:
+            if self.save_epoch_end:
+                self.epoch_ckp_path = os.path.join(self.ckp_path, 'epoch')
                 mkdir_or_exist(self.epoch_ckp_path)
 
         # gradient clipping
@@ -178,7 +176,7 @@ class BaseMethod(nn.Module):
         self.load_ckp(ckp_path=resume_from)
 
         # run several val steps as sanity check
-        if self.local_rank == 0 and san_check_val_step > 0:
+        if san_check_val_step > 0:
             self.validation_epoch(
                 self.model.module, san_check_step=san_check_val_step)
 
@@ -230,7 +228,7 @@ class BaseMethod(nn.Module):
         """Compute and aggregate losses."""
         out_dict = self.model.module.loss_function(batch_data)
         assert 'loss' not in out_dict.keys()
-        loss = torch.tensor(0.).to(self.device)
+        loss = self._make_tensor(0.)
         for loss_name, loss_value in out_dict.items():
             if not loss_name.endswith('_loss'):
                 continue
@@ -322,7 +320,7 @@ class BaseMethod(nn.Module):
 
         print(f'>>> Training epoch {self.epoch} start')
 
-        # sync DDP training processes at the end of epoch
+        # sync DDP training processes at the beginning of epoch
         if self.use_ddp:
             torch.distributed.barrier()
 
@@ -337,10 +335,9 @@ class BaseMethod(nn.Module):
         self.it += 1
         if (self.epoch_it + 1) % self.save_iter == 0:
             self.save_ckp(save_loader=True)
-
-        # sync DDP training processes at the end of epoch
-        if self.use_ddp:
-            torch.distributed.barrier()
+            # sync DDP training processes at the end of step
+            if self.use_ddp:
+                torch.distributed.barrier()
 
     def _training_epoch_end(self):
         """Things to do at the end of every training epoch."""
@@ -349,6 +346,8 @@ class BaseMethod(nn.Module):
         self.epoch += 1
         self.stats_dict = None
         self.save_ckp(save_loader=False)
+        if self.use_ddp:
+            torch.distributed.barrier()
 
         # run one epoch of validation after each training epoch
         if (self.epoch + 1) % self.eval_interval == 0:
@@ -381,11 +380,12 @@ class BaseMethod(nn.Module):
                 break
 
         # log eval statistics
+        out_dict = {
+            f'val/{k}': v.compute().item()
+            for k, v in self.stats_dict.items()
+        }
+        print(f'Eval epoch {self.epoch}:\n{out_dict}')
         if self.local_rank == 0 and san_check_step <= 0:
-            out_dict = {
-                f'val/{k}': v.compute().item()
-                for k, v in self.stats_dict.items()
-            }
             wandb.log(out_dict, step=self.it)
         self.stats_dict = None
         torch.cuda.empty_cache()
@@ -435,6 +435,13 @@ class BaseMethod(nn.Module):
                     f'unsupported optimizer {self.params.optimizer}')
         return optimizer, (None, '')
 
+    def _make_tensor(self, x):
+        """Convert `x` to torch.tensor on `self.device`.
+
+        Usually used in DDP all_gather some non-torch variables.
+        """
+        return torch.tensor(x).to(self.device)
+
     @torch.no_grad()
     def _accumulate_stats(self, stats_dict, test=False):
         """Append stats in `stats_dict` to `self.stats_dict`.
@@ -446,9 +453,13 @@ class BaseMethod(nn.Module):
         bs = stats_dict.pop('batch_size', 1)
         if self.stats_dict is None:
             meter = MeanMetric if test else AverageMeter
-            self.stats_dict = {k: meter() for k in stats_dict.keys()}
+            self.stats_dict = {
+                k: meter(device=self.device)
+                for k in stats_dict.keys()
+            }
         for k, v in stats_dict.items():
-            self.stats_dict[k].update(v.item(), bs)
+            item = self._make_tensor(v.item()) if test else v.item()
+            self.stats_dict[k].update(item, bs)
 
     @torch.no_grad()
     def _gather_train_sampler_state(self):
@@ -471,7 +482,7 @@ class BaseMethod(nn.Module):
         # need to gather all rank dataloader in DDP
         # all_gather only supports tensor, so we convert them into tensor
         sampler_state = indices + [counter]
-        sampler_state = torch.tensor(sampler_state).to(self.device)
+        sampler_state = self._make_tensor(sampler_state)
         gather_state = ddp_all_gather(sampler_state).cpu()
         indices, counter = gather_state[:, :-1], gather_state[:, -1]
         # lists of shape [world_size, N], [world_size]
@@ -526,6 +537,7 @@ class BaseMethod(nn.Module):
         if save_loader:
             ckp.update(train_sampler_states)
         torch.save(ckp, ckp_path)
+        print(f'INFO: saving checkpoint {ckp_path}')
 
         # we may want to save ckp at the end of every epoch
         # these ckps won't be restricted by `keep_num`

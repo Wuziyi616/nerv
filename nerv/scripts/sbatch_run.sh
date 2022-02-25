@@ -41,8 +41,8 @@ echo "#!/bin/bash
 
 # set up SBATCH args
 #SBATCH --job-name=$JOB_NAME
-#SBATCH --output=$LOG_DIR/slurm_output.log
-#SBATCH --error=$LOG_DIR/slurm_error.log
+#SBATCH --output=$LOG_FILE
+#SBATCH --error=$LOG_FILE
 #SBATCH --open-mode=append
 #SBATCH --partition=$PARTITION                       # self-explanatory, set to your preference (e.g. gpu or cpu on MaRS, p100, t4, or cpu on Vaughan)
 #SBATCH --cpus-per-task=$CPUS_PER_TASK               # self-explanatory, set to your preference

@@ -1,5 +1,14 @@
+import numpy as np
+
 import torch
 import torch.distributed as dist
+
+
+def to_numpy(tensor):
+    if isinstance(tensor, torch.Tensor):
+        return tensor.detach().cpu().numpy()
+    assert isinstance(tensor, np.ndarray)
+    return tensor
 
 
 def batch_gather(tensor, idx):

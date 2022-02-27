@@ -6,10 +6,41 @@ import torch
 from torchmetrics import MeanMetric as TorchMeanMetric
 from torchmetrics.aggregation import BaseAggregator
 
+from nerv.utils.tensor import to_numpy
+
 
 def datetime2str(form='%Y-%m-%d_%H-%M-%S'):
     datetime = time.strftime(form, time.localtime())
     return datetime
+
+
+def assert_array_shape(xyz, shapes=()):
+    """Check array shape.
+
+    Args:
+        xyz (np.ndarray): array
+        shape (tuple of tuple of ints, optional): possible target shapes,
+            -1 means arbitrary. Defaults to ((-1, 3)).
+    """
+    if not shapes:
+        raise ValueError('"shapes" cannot be empty')
+
+    if isinstance(shapes[0], int):
+        shapes = (shapes, )
+
+    flags = {x: True for x in range(len(shapes))}
+    for idx, shape in enumerate(shapes):
+        if len(xyz.shape) != len(shape):
+            flags[idx] = False
+
+        for dim, num in enumerate(shape):
+            if num == -1:
+                continue
+            elif xyz.shape[dim] != num:
+                flags[idx] = False
+    if sum(flags.values()) == 0:  # None of the possible shape works
+        raise ValueError(
+            f'Input array {xyz.shape} is not in target shapes {shapes}!')
 
 
 def array_equal(a, b):
@@ -152,8 +183,7 @@ def convert4save(array, is_video=False):
     Returns:
         np.ndarray: the converted array ready for save (image or video).
     """
-    if isinstance(array, torch.Tensor):
-        array = array.detach().cpu().numpy()
+    array = to_numpy(array)
     if 'int' in str(array.dtype):
         assert 0 <= array.min() <= array.max() <= 255
     elif 'float' in str(array.dtype):

@@ -318,7 +318,7 @@ class BaseMethod(nn.Module):
                 setattr(self.params, var_name, new_var)
                 print(f'Changing params.{var_name} to {new_var}')
 
-        print(f'>>> Training epoch {self.epoch} start')
+        print(f'>>> Training epoch {self.epoch} start, rank {self.local_rank}')
 
         # sync DDP training processes at the beginning of epoch
         if self.use_ddp:
@@ -363,7 +363,7 @@ class BaseMethod(nn.Module):
             of DDPModel for eval to prevent hanging.
         See: https://discuss.pytorch.org/t/torch-distributed-barrier-hangs-in-ddp/114522.  # noqa
         """
-        print('>>> Evaluating')
+        print(f'>>> Evaluating start, rank: {self.local_rank}')
         model.eval()
         self.stats_dict = None
         torch.cuda.empty_cache()
@@ -380,15 +380,15 @@ class BaseMethod(nn.Module):
                 break
 
         # log eval statistics
-        out_dict = {
-            f'val/{k}': v.compute().item()
-            for k, v in self.stats_dict.items()
-        }
-        print(f'Eval epoch {self.epoch}:\n{out_dict}')
         if self.local_rank == 0 and san_check_step <= 0:
+            out_dict = {
+                f'val/{k}': v.compute().item()
+                for k, v in self.stats_dict.items()
+            }
             wandb.log(out_dict, step=self.it)
         self.stats_dict = None
         torch.cuda.empty_cache()
+        print(f'>>> Evaluating end, rank: {self.local_rank}')
 
     def _setup_optimizer(self):
         """Construct optimizer and lr scheduler."""

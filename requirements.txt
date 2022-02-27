@@ -4,6 +4,8 @@ tqdm
 numpy
 wandb
 pyyaml
+open3d
+matplotlib
 
 torch
 torchvision

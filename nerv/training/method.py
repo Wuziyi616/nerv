@@ -199,7 +199,8 @@ class BaseMethod(nn.Module):
             len(self.train_loader.sampler) -
             self.train_loader.sampler.real_counter(
                 self.iter_train_loader)) // self.params.train_batch_size
-        with tqdm(total=train_steps, desc=f'Train epoch {self.epoch}') as t:
+        tqdm_desc = f'Train epoch {self.epoch}, rank {self.local_rank}'
+        with tqdm(total=train_steps, desc=tqdm_desc) as t:
             for batch_idx, batch_data in enumerate(self.iter_train_loader):
                 torch.cuda.empty_cache()
                 # set the batch idx
@@ -368,8 +369,9 @@ class BaseMethod(nn.Module):
         self.stats_dict = None
         torch.cuda.empty_cache()
 
+        tqdm_desc = f'Eval epoch {self.epoch}, rank {self.local_rank}'
         for batch_idx, batch_data in enumerate(
-                tqdm(self.val_loader, desc=f'Eval epoch {self.epoch}')):
+                tqdm(self.val_loader, desc=tqdm_desc)):
             batch_data = {k: v.to(self.device) for k, v in batch_data.items()}
 
             out_dict = model.loss_function(batch_data)
@@ -380,12 +382,19 @@ class BaseMethod(nn.Module):
                 break
 
         # log eval statistics
-        if self.local_rank == 0 and san_check_step <= 0:
+        if san_check_step <= 0:
+            # we explicitly follow keys order for DDP sync
+            all_keys = sorted(list(self.stats_dict.keys()))
             out_dict = {
-                f'val/{k}': v.compute().item()
-                for k, v in self.stats_dict.items()
+                f'val/{k}': self.stats_dict[k].compute().item()
+                for k in all_keys
             }
-            wandb.log(out_dict, step=self.it)
+            print(f'Eval epoch {self.epoch}, rank {self.local_rank} result:',
+                  out_dict)
+            if self.local_rank == 0:
+                wandb.log(out_dict, step=self.it)
+                print(f'Eval epoch {self.epoch}, rank {self.local_rank} log')
+
         self.stats_dict = None
         torch.cuda.empty_cache()
         print(f'>>> Evaluating end, rank: {self.local_rank}')
@@ -451,13 +460,13 @@ class BaseMethod(nn.Module):
             we need to gather metrics over all the device.
         """
         bs = stats_dict.pop('batch_size', 1)
+        # we explicitly follow keys order for DDP sync
+        all_keys = sorted(list(stats_dict.keys()))
         if self.stats_dict is None:
             meter = MeanMetric if test else AverageMeter
-            self.stats_dict = {
-                k: meter(device=self.device)
-                for k in stats_dict.keys()
-            }
-        for k, v in stats_dict.items():
+            self.stats_dict = {k: meter(device=self.device) for k in all_keys}
+        for k in all_keys:
+            v = stats_dict[k]
             item = self._make_tensor(v.item()) if test else v.item()
             self.stats_dict[k].update(item, bs)
 

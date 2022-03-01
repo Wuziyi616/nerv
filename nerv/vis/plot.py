@@ -4,6 +4,15 @@ import matplotlib.pyplot as plt
 from nerv.utils.misc import to_numpy
 
 
+def get_lim(x):
+    """Calculate the axis limit from data."""
+    assert len(x.shape) == 1
+    x_min, x_max = np.min(x), np.max(x)
+    x_min = 1.2 * x_min if x_min < 0. else 0.8 * x_min
+    x_max = 1.2 * x_max if x_max > 0. else 0.8 * x_max
+    return (x_min, x_max)
+
+
 def set_axis(axis,
              grid=True,
              lim=None,
@@ -59,9 +68,10 @@ def plot_2d(
     ax.plot(x, y, **plot_configs)
 
     if lim is None:
-        lim = ((np.min(x), np.max(x)), (np.min(y), np.max(y)))
+        lim = (get_lim(x), get_lim(y))
 
-    set_axis(axis, lim=lim, label=label, equal_axis=equal_axis)
+    set_axis(ax, lim=lim, label=label, equal_axis=equal_axis)
+    plt.tight_layout()
 
     if show:
         if line_label is not None:
@@ -108,9 +118,10 @@ def scatter_2d(
     ax.scatter(x, y, **scatter_configs)
 
     if lim is None:
-        lim = ((np.min(x), np.max(x)), (np.min(y), np.max(y)))
+        lim = (get_lim(x), get_lim(y))
 
-    set_axis(axis, lim=lim, label=label, equal_axis=equal_axis)
+    set_axis(ax, lim=lim, label=label, equal_axis=equal_axis)
+    plt.tight_layout()
 
     if show:
         if scatter_label is not None:
@@ -158,10 +169,10 @@ def plot_3d(
     ax.plot(x, y, z, **plot_configs)
 
     if lim is None:
-        lim = ((np.min(x), np.max(x)), (np.min(y), np.max(y)), (np.min(z),
-                                                                np.max(z)))
+        lim = (get_lim(x), get_lim(y), get_lim(z))
 
-    set_axis(axis, lim=lim, label=label, equal_axis=equal_axis)
+    set_axis(ax, lim=lim, label=label, equal_axis=equal_axis)
+    plt.tight_layout()
 
     if show:
         if line_label is not None:

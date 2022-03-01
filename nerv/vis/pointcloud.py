@@ -117,9 +117,9 @@ def visualize_3d_point_cloud_mpl(
     else:
         lim = (min(np.min(x), np.min(y),
                    np.min(z)), max(np.max(x), np.max(y), np.max(z)))
-        ax.set_xlim(1.3 * lim[0], 1.3 * lim[1])
-        ax.set_ylim(1.3 * lim[0], 1.3 * lim[1])
-        ax.set_zlim(1.3 * lim[0], 1.3 * lim[1])
+        ax.set_xlim3d(1.2 * lim[0], 1.2 * lim[1])
+        ax.set_ylim3d(1.2 * lim[0], 1.2 * lim[1])
+        ax.set_zlim3d(1.2 * lim[0], 1.2 * lim[1])
         plt.tight_layout()
 
     if not show_axis:

@@ -34,6 +34,12 @@ class BaseParams:
     # var1_all = [1., 10., 100.]
     # var1_t = [40, 80]
 
+    def get(self, key, value=None):
+        """`get` function similar to dict."""
+        if hasattr(self, key):
+            return getattr(self, key)
+        return value
+
     def to_dict(self):
         all_vars = [var for var in dir(self) if not var.startswith('__')]
         all_vars.remove('to_dict')

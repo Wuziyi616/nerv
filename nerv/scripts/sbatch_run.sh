@@ -31,7 +31,8 @@ mkdir -p $LOG_DIR
 # python runner for DDP
 if [[ $DDP == "ddp" ]];
 then
-  PYTHON="python -m torch.distributed.launch --nproc_per_node=$GPUS"
+  PORT=$((29501 + $RANDOM % 100))  # randomly select a port
+  PYTHON="python -m torch.distributed.launch --nproc_per_node=$GPUS --master_port=$PORT"
 else
   PYTHON="python"
 fi

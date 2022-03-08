@@ -1,10 +1,33 @@
 import torch
-from torch.utils.data import DataLoader, sampler
+from torch.utils.data import Dataset, DataLoader, sampler
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data._utils.collate import default_collate
 
 
+class RepeatDataset(Dataset):
+    """Dataset wrapper of repeated dataset.
+
+    The length of repeated dataset will be `times` larger than the original
+    dataset. This is useful when data loading is slow but the dataset is small.
+    Using RepeatDataset can reduce the data loading time between epochs.
+
+    Inspired by: https://github.com/open-mmlab/mmdetection/blob/01b55b29e9a32b6989b453dfe226b52eff249821/mmdet/datasets/dataset_wrappers.py#L154
+    """
+
+    def __init__(self, dataset, times):
+        self.dataset = dataset
+        self.times = times
+        self._ori_len = len(self.dataset)
+
+    def __getitem__(self, idx):
+        return self.dataset.__getitem__(idx % self._ori_len)
+
+    def __len__(self):
+        return self.times * self._ori_len
+
+
 class _StatefulSampler:
+    """BaseSampler that supports save/load state_dict."""
 
     def __init__(self):
         self.indices = None
@@ -139,19 +162,27 @@ class StatefulDistributedSampler(DistributedSampler, _StatefulSampler):
 
 
 class BaseDataModule:
-    """Base class for data loading, i.e. creating dataloaders from datasets."""
+    """Base class for data loading, i.e. creating dataloaders from datasets.
+
+    Args:
+        repeat_train_times (int, optional): if larger than 0, we will wrap
+            `train_set` with `RepeatDataset` for this times.
+    """
 
     def __init__(self,
                  params,
                  train_set,
                  val_set,
                  use_ddp=False,
-                 collate_fn=default_collate):
+                 collate_fn=default_collate,
+                 repeat_train_times=-1):
         self.params = params
         self.train_set = train_set
         self.val_set = val_set
         self.use_ddp = use_ddp
         self.collate_fn = collate_fn
+        if repeat_train_times > 0:
+            self.train_set = RepeatDataset(self.train_set, repeat_train_times)
 
         self._train_loader, self._val_loader = None, None
 

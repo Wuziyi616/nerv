@@ -176,24 +176,31 @@ class BaseDataModule:
                  use_ddp=False,
                  collate_fn=default_collate,
                  repeat_train_times=-1):
+        assert train_set is not None or val_set is not None, \
+            'at least one dataset should be given.'
         self.params = params
         self.train_set = train_set
         self.val_set = val_set
         self.use_ddp = use_ddp
         self.collate_fn = collate_fn
         if repeat_train_times > 0:
+            assert self.train_set is not None
             self.train_set = RepeatDataset(self.train_set, repeat_train_times)
 
         self._train_loader, self._val_loader = None, None
 
     @property
     def train_loader(self):
+        if self.train_set is None:
+            raise ValueError('train_set is None')
         if self._train_loader is None:
             self._build_dataloader()
         return self._train_loader
 
     @property
     def val_loader(self):
+        if self.val_set is None:
+            raise ValueError('val_set is None')
         if self._val_loader is None:
             self._build_dataloader()
         return self._val_loader
@@ -201,49 +208,53 @@ class BaseDataModule:
     def _build_dataloader(self):
         """Build training and validation data loaders."""
         if self.use_ddp:
-            train_state_dist_sampler = StatefulDistributedSampler(
-                self.train_set, shuffle=True, drop_last=True)
-            self._train_loader = DataLoader(
-                self.train_set,
-                batch_size=self.params.train_batch_size,
-                sampler=train_state_dist_sampler,
-                num_workers=self.params.num_workers,
-                collate_fn=self.collate_fn,
-                pin_memory=True,
-                drop_last=True,
-                persistent_workers=(self.params.num_workers > 0),
-            )
-            val_dist_sampler = DistributedSampler(
-                self.val_set, shuffle=False, drop_last=False)
-            self._val_loader = DataLoader(
-                self.val_set,
-                batch_size=self.params.val_batch_size,
-                sampler=val_dist_sampler,
-                num_workers=self.params.num_workers,
-                collate_fn=self.collate_fn,
-                pin_memory=True,
-                drop_last=False,
-                persistent_workers=(self.params.num_workers > 0),
-            )
+            if self.train_set is not None:
+                train_state_dist_sampler = StatefulDistributedSampler(
+                    self.train_set, shuffle=True, drop_last=True)
+                self._train_loader = DataLoader(
+                    self.train_set,
+                    batch_size=self.params.train_batch_size,
+                    sampler=train_state_dist_sampler,
+                    num_workers=self.params.num_workers,
+                    collate_fn=self.collate_fn,
+                    pin_memory=True,
+                    drop_last=True,
+                    persistent_workers=(self.params.num_workers > 0),
+                )
+            if self.val_set is not None:
+                val_dist_sampler = DistributedSampler(
+                    self.val_set, shuffle=False, drop_last=False)
+                self._val_loader = DataLoader(
+                    self.val_set,
+                    batch_size=self.params.val_batch_size,
+                    sampler=val_dist_sampler,
+                    num_workers=self.params.num_workers,
+                    collate_fn=self.collate_fn,
+                    pin_memory=True,
+                    drop_last=False,
+                    persistent_workers=(self.params.num_workers > 0),
+                )
         else:
-            state_sampler = StatefulSampler(self.train_set, shuffle=True)
-            self._train_loader = DataLoader(
-                self.train_set,
-                batch_size=self.params.train_batch_size,
-                sampler=state_sampler,
-                num_workers=self.params.num_workers,
-                collate_fn=self.collate_fn,
-                pin_memory=True,
-                drop_last=True,
-                persistent_workers=(self.params.num_workers > 0),
-            )
-            self._val_loader = DataLoader(
-                self.val_set,
-                batch_size=self.params.val_batch_size,
-                shuffle=False,
-                num_workers=self.params.num_workers,
-                collate_fn=self.collate_fn,
-                pin_memory=True,
-                drop_last=False,
-                persistent_workers=(self.params.num_workers > 0),
-            )
+            if self.train_set is not None:
+                state_sampler = StatefulSampler(self.train_set, shuffle=True)
+                self._train_loader = DataLoader(
+                    self.train_set,
+                    batch_size=self.params.train_batch_size,
+                    sampler=state_sampler,
+                    num_workers=self.params.num_workers,
+                    collate_fn=self.collate_fn,
+                    pin_memory=True,
+                    drop_last=True,
+                    persistent_workers=(self.params.num_workers > 0),
+                )
+            if self.val_set is not None:
+                self._val_loader = DataLoader(
+                    self.val_set,
+                    batch_size=self.params.val_batch_size,
+                    shuffle=False,
+                    num_workers=self.params.num_workers,
+                    collate_fn=self.collate_fn,
+                    pin_memory=True,
+                    drop_last=False,
+                    persistent_workers=(self.params.num_workers > 0),
+                )

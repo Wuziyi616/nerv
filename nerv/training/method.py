@@ -581,7 +581,7 @@ class BaseMethod(nn.Module):
 
         print(f'INFO: loading checkpoint {ckp_path}')
         check_file_exist(ckp_path)
-        ckp = torch.load(ckp_path)
+        ckp = torch.load(ckp_path, map_location='cpu')
         self.it, self.epoch = ckp['it'], ckp['epoch']
         self.model.module.load_state_dict(ckp['state_dict'])
         self.optimizer.load_state_dict(ckp['opt_state_dict'])

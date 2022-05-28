@@ -143,6 +143,15 @@ def dump_obj(obj, file=None, format=None, **kwargs):
     return processors[format](obj, file, **kwargs)
 
 
+def read_all_lines(file, strip=True):
+    """Read all lines from a file."""
+    with open(file, 'r') as f:
+        lines = f.readlines()
+    if strip:
+        lines = [line.strip() for line in lines]
+    return lines
+
+
 def strip_suffix(file):
     """Return the filename without suffix.
     E.g. 'xxx/video' for 'xxx/video.mp4'.
@@ -187,7 +196,7 @@ def scandir(dir_path, suffix=None):
             yield filename
 
 
-def glob_all(dir_path, only_dir=False, sort=True):
+def glob_all(dir_path, only_dir=False, sort=True, strip=True):
     """Similar to `scandir`, but return the entire path cat with dir_path."""
     if only_dir:
         pattern = path.join(dir_path, '*/')
@@ -196,4 +205,6 @@ def glob_all(dir_path, only_dir=False, sort=True):
     results = glob.glob(pattern)
     if sort:
         results.sort()
+    if strip:
+        results = [res.rstrip('/') for res in results]
     return results

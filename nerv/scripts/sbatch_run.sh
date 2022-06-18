@@ -6,13 +6,14 @@
 
 #######################################################################
 # An example usage:
-#     GPUS=1 CPUS_PER_TASK=8 MEM_PER_CPU=6 QOS=normal ./sbatch_run.sh rtx6000 test-sbatch test.py ddp --params params.py
+#     GPUS=1 CPUS_PER_TASK=8 MEM_PER_CPU=5 QOS=normal ./sbatch_run.sh rtx6000 \
+#         test-sbatch test.py ddp --params params.py --fp16 --ddp --cudnn
 #######################################################################
 
 # read args from command line
 GPUS=${GPUS:-1}
-CPUS_PER_TASK=${CPUS_PER_TASK:-5}
-MEM_PER_CPU=${MEM_PER_CPU:-8}
+CPUS_PER_TASK=${CPUS_PER_TASK:-8}
+MEM_PER_CPU=${MEM_PER_CPU:-5}
 QOS=${QOS:-normal}
 
 PY_ARGS=${@:5}
@@ -21,7 +22,8 @@ JOB_NAME=$2
 PY_FILE=$3
 DDP=$4
 
-LOG_DIR=checkpoint/$JOB_NAME
+SLRM_NAME="${JOB_NAME/\//"_"}"
+LOG_DIR=checkpoint/"$(basename -- $JOB_NAME)"
 DATETIME=$(date "+%Y-%m-%d_%H:%M:%S")
 LOG_FILE=$LOG_DIR/${DATETIME}.log
 
@@ -41,7 +43,7 @@ fi
 echo "#!/bin/bash
 
 # set up SBATCH args
-#SBATCH --job-name=$JOB_NAME
+#SBATCH --job-name=$SLRM_NAME
 #SBATCH --output=$LOG_FILE
 #SBATCH --error=$LOG_FILE
 #SBATCH --open-mode=append
@@ -55,7 +57,7 @@ echo "#!/bin/bash
 #SBATCH --qos=$QOS                                   # for 'high' and 'deadline' QoS, refer to https://support.vectorinstitute.ai/AboutVaughan2
 
 # link /checkpoint to current folder
-ln -sfn /checkpoint/\$USER/\$SLURM_JOB_ID $LOG_DIR
+# ln -sfn /checkpoint/\$USER/\$SLURM_JOB_ID $LOG_DIR
 
 # log some necessary environment params
 echo \$SLURM_JOB_ID >> $LOG_FILE                      # log the job id
@@ -70,11 +72,11 @@ nvcc --version >> $LOG_FILE                          # log NVCC version
 # run python file
 $PYTHON $PY_FILE $PY_ARGS >> $LOG_FILE                # the script above, with its standard output appended log file
 
-" >> ./run-${JOB_NAME}.slrm
+" >> ./run-${SLRM_NAME}.slrm
 
 # run the created file
-sbatch run-${JOB_NAME}.slrm
+sbatch run-${SLRM_NAME}.slrm
 
 # delete it
-sleep 3
-rm -f run-${JOB_NAME}.slrm
+sleep 1
+rm -f run-${SLRM_NAME}.slrm

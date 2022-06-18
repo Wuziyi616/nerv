@@ -1,6 +1,7 @@
 """Template train.py"""
 
 import os
+import sys
 import pwd
 import importlib
 import argparse
@@ -21,13 +22,16 @@ def main(params):
     if args.ddp:
         print("INFO: using DDP training!")
 
+    print('Loading data...')
     # train_set, val_set = build_dataset()
     datamodule = BaseDataModule(
         params, train_set=None, val_set=None, use_ddp=args.ddp)
 
+    print('Building model...')
     model = BaseModel()
 
-    exp_name = f'{args.params}-fp16' if args.fp16 else args.params
+    exp_name = f'{os.path.basename(args.params)}-fp16' if \
+        args.fp16 else args.params
     ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
     if args.local_rank == 0:
         mkdir_or_exist(os.path.dirname(ckp_path))
@@ -61,8 +65,10 @@ def main(params):
         use_fp16=args.fp16,
     )
 
+    print('Training...')
     method.fit(
         resume_from=args.weight, san_check_val_step=params.san_check_val_step)
+    print('Done!')
 
 
 if __name__ == "__main__":
@@ -74,12 +80,17 @@ if __name__ == "__main__":
     parser.add_argument('--cudnn', action='store_true')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
+
     if args.params.endswith('.py'):
         args.params = args.params[:-3]
-    params = importlib.import_module(args.params)
+    sys.path.append(os.path.dirname(args.params))
+    params = importlib.import_module(os.path.basename(args.params))
     params = params.BaseParams()
+    params.ddp = args.ddp
+
     SLURM_JOB_ID = os.environ.get('SLURM_JOB_ID')
     CHECKPOINT = './checkpoint/'
     if args.cudnn:
         torch.backends.cudnn.benchmark = True
+
     main(params)

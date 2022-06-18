@@ -5,16 +5,16 @@
 
 #######################################################################
 # An example usage:
-#     GPUS=1 CPUS_PER_TASK=8 MEM_PER_CPU=6 QOS=normal REPEAT=5 ./dup_run_sbatch.sh \
-#       rtx6000 test-sbatch test.py ddp params.py --fp16
+#     GPUS=1 CPUS_PER_TASK=8 MEM_PER_CPU=5 QOS=normal REPEAT=3 ./dup_run_sbatch.sh \
+#       rtx6000 test-sbatch test.py ddp params.py --fp16 --ddp --cudnn
 #######################################################################
 
 # read args from command line
 GPUS=${GPUS:-1}
-CPUS_PER_TASK=${CPUS_PER_TASK:-5}
-MEM_PER_CPU=${MEM_PER_CPU:-8}
+CPUS_PER_TASK=${CPUS_PER_TASK:-8}
+MEM_PER_CPU=${MEM_PER_CPU:-5}
 QOS=${QOS:-normal}
-REPEAT=${REPEAT:-5}
+REPEAT=${REPEAT:-3}
 
 PY_ARGS=${@:6}
 PARTITION=$1
@@ -25,9 +25,10 @@ PARAMS=$5
 
 for repeat_idx in $(seq 1 $REPEAT)
 do
-    params="dup${repeat_idx}-${PARAMS}"
+    params="${params:0:(-3)}-dup${repeat_idx}.py"
     cp $PARAMS $params
-    job_name="dup${repeat_idx}-${JOB_NAME}"
-    echo "./sbatch_run.sh $PARTITION $job_name $PY_FILE $DDP --params $params $PY_ARGS"
-    ./sbatch_run.sh $PARTITION $job_name $PY_FILE $DDP --params $params $PY_ARGS
+    job_name="${JOB_NAME}-dup${repeat_idx}"
+    cmd="./sbatch_run.sh $PARTITION $job_name $PY_FILE $DDP --params $params $PY_ARGS"
+    echo $cmd
+    eval $cmd
 done

@@ -17,7 +17,7 @@ class BaseModel(nn.Module):
     @torch.no_grad()
     def calc_eval_loss(self, data_dict, out_dict):
         """Loss computation in eval."""
-        pass
+        return self.calc_train_loss(data_dict, out_dict)
 
     def loss_function(self, data_dict):
         """General warpper for loss calculation."""
@@ -27,7 +27,10 @@ class BaseModel(nn.Module):
         else:
             out_dict = self.calc_eval_loss(data_dict, out_dict)
         # batch_size for statistics accumulation
-        out_dict['batch_size'] = list(data_dict.values())[0].shape[0]
+        for v in data_dict.values():
+            if isinstance(v, torch.Tensor):
+                out_dict['batch_size'] = v.shape[0]
+                break
         return out_dict
 
     @property

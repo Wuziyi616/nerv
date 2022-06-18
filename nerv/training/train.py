@@ -1,6 +1,7 @@
 """Template train.py"""
 
 import os
+import pwd
 import importlib
 import argparse
 import wandb
@@ -30,15 +31,25 @@ def main(params):
     ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
     if args.local_rank == 0:
         mkdir_or_exist(os.path.dirname(ckp_path))
+        wandb_name = f'{exp_name}-{SLURM_JOB_ID}'
 
         # on clusters, quota is limited
         # soft link temp space for checkpointing
-        if not os.path.exists(ckp_path):
-            os.system(r'ln -s /checkpoint/ziyiwu/{}/ {}'.format(
-                SLURM_JOB_ID, ckp_path))
+        if SLURM_JOB_ID and os.path.isdir('/checkpoint/'):
+            if not os.path.exists(ckp_path):
+                usr = pwd.getpwuid(os.getuid())[0]
+                os.system(r'ln -s /checkpoint/{}/{}/ {}'.format(
+                    usr, SLURM_JOB_ID, ckp_path))
+                wandb_id = wandb_name
+            else:
+                os.makedirs(ckp_path, exist_ok=True)
+                wandb_id = None
 
-        wandb_name = f'{exp_name}-{SLURM_JOB_ID}'
-        wandb.init(project=params.project, name=wandb_name, id=wandb_name)
+        wandb.init(project=params.project, name=wandb_name, id=wandb_id)
+        # it's not good to hard-code the wandb id
+        # but on preemption clusters, we want the job to resume the same
+        # wandb process after resuming training
+        # so I have to keep the same wandb id
 
     method = BaseMethod(
         model,

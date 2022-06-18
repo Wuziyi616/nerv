@@ -152,6 +152,12 @@ def read_all_lines(file, strip=True):
     return lines
 
 
+def write_all_lines(lines, file):
+    """Write all lines to a file."""
+    with open(file, 'w') as f:
+        f.writelines([line + '\n' for line in lines])
+
+
 def strip_suffix(file):
     """Return the filename without suffix.
     E.g. 'xxx/video' for 'xxx/video.mp4'.

@@ -30,8 +30,7 @@ def main(params):
     print('Building model...')
     model = BaseModel()
 
-    exp_name = f'{os.path.basename(args.params)}-fp16' if \
-        args.fp16 else args.params
+    exp_name = os.path.basename(args.params)
     ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
     if args.local_rank == 0:
         mkdir_or_exist(os.path.dirname(ckp_path))

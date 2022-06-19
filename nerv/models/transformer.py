@@ -34,11 +34,13 @@ def build_transformer_encoder(
     ffn_dim,
     num_layers,
     norm_first=True,
+    norm_last=True,
 ):
     """Build the Transformer Encoder.
 
     Args:
         norm_first (bool): whether apply pre-LN
+        norm_last (bool): when in pre-LN mode, whether to do final LN output
     """
     transformer_enc_layer = nn.TransformerEncoderLayer(
         d_model=d_model,
@@ -47,12 +49,14 @@ def build_transformer_encoder(
         norm_first=norm_first,
         batch_first=True,
     )
+    norm = nn.LayerNorm(d_model) if (norm_last and norm_first) else None
     transformer_encoder = TransformerEncoderWithPosEnc(
         input_len=input_len,
         pos_enc=pos_enc,
         d_model=d_model,
         encoder_layer=transformer_enc_layer,
         num_layers=num_layers,
+        norm=norm,
     )
     return transformer_encoder
 

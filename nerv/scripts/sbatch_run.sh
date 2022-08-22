@@ -15,6 +15,7 @@ GPUS=${GPUS:-1}
 CPUS_PER_TASK=${CPUS_PER_TASK:-8}
 MEM_PER_CPU=${MEM_PER_CPU:-5}
 QOS=${QOS:-normal}
+TIME=${TIME:-0}
 
 PY_ARGS=${@:5}
 PARTITION=$1
@@ -55,6 +56,7 @@ echo "#!/bin/bash
 #SBATCH --gres=gpu:$GPUS                             # NOTE: you need a GPU for CUDA support; self-explanatory, set to your preference 
 #SBATCH --nodes=1
 #SBATCH --qos=$QOS                                   # for 'high' and 'deadline' QoS, refer to https://support.vectorinstitute.ai/AboutVaughan2
+#SBATCH --time=$TIME                                 # running time limit, 0 as unlimited
 
 # link /checkpoint to current folder
 # ln -sfn /checkpoint/\$USER/\$SLURM_JOB_ID $LOG_DIR

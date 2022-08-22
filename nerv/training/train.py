@@ -48,7 +48,12 @@ def main(params):
                 os.makedirs(ckp_path, exist_ok=True)
                 wandb_id = None
 
-        wandb.init(project=params.project, name=wandb_name, id=wandb_id)
+        wandb.init(
+            project=params.project,
+            name=wandb_name,
+            id=wandb_id,
+            dir=ckp_path,
+        )
         # it's not good to hard-code the wandb id
         # but on preemption clusters, we want the job to resume the same
         # wandb process after resuming training

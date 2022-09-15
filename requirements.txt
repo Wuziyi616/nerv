@@ -1,4 +1,4 @@
-cv2
+# tested with python 3.8.8
 six
 tqdm
 numpy
@@ -6,7 +6,15 @@ wandb
 pyyaml
 open3d
 matplotlib
+opencv-python
+moviepy
+imageio
 
-torch
-torchvision
-torchmetrics
+# please install PyTorch + CUDA manually (conda is recommended)
+# see: https://pytorch.org/get-started/previous-versions/#linux-and-windows-2
+#   both cuda11.3 and cuda10.2 are tested
+# torch==1.10.1
+# torchvision==0.11.2
+einops==0.3.2
+pytorch-lightning==1.6.2
+torchmetrics==0.7.2

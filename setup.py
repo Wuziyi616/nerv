@@ -2,8 +2,8 @@ from setuptools import find_packages, setup
 
 install_requires = [
     'numpy', 'pyyaml', 'six', 'tqdm', 'opencv-python', 'matplotlib', 'open3d',
-    'wandb', 'moviepy', 'imageio', 'torch', 'torchvision', 'einops',
-    'torchmetrics', 'pytorch-lightning'
+    'wandb', 'moviepy', 'imageio', 'torch', 'torchvision', 'torchmetrics',
+    'pytorch-lightning'
 ]
 
 

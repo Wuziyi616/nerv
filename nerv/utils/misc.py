@@ -113,6 +113,7 @@ class AverageMeter(object):
 
 
 class MeanMetric(BaseAggregator):
+    """My implemented MeanMetric class inspired by torchmetrics.MeanMetric."""
 
     def __init__(
         self,
@@ -124,14 +125,20 @@ class MeanMetric(BaseAggregator):
         dist_sync_fn=None,
     ):
         self.to(device)
-        super().__init__("sum",
-                         torch.tensor(0.0).to(device), nan_strategy,
-                         compute_on_step, dist_sync_on_step, process_group,
-                         dist_sync_fn)
+        super().__init__(
+            "sum",
+            torch.tensor(0.0).to(device),
+            nan_strategy=nan_strategy,
+            compute_on_step=compute_on_step,
+            dist_sync_on_step=dist_sync_on_step,
+            process_group=process_group,
+            dist_sync_fn=dist_sync_fn,
+        )
         self.add_state(
             "weight",
             default=torch.tensor(0.0).to(device),
-            dist_reduce_fx="sum")
+            dist_reduce_fx="sum",
+        )
         self.to(device)
 
     def update(self, value, weight=1.0):

@@ -202,13 +202,15 @@ class VideoReader(object):
         frames = [self.read() for _ in range(len(self))]
         return frames
 
-    def cvt2frames(self,
-                   frame_dir,
-                   target_shape=None,
-                   file_start=0,
-                   filename_tmpl='{:06d}.jpg',
-                   start=0,
-                   max_num=0):
+    def cvt2frames(
+        self,
+        frame_dir,
+        target_shape=None,
+        file_start=0,
+        filename_tmpl='{:06d}.jpg',
+        start=0,
+        max_num=0,
+    ):
         """Convert a video to frame images.
 
         Args:
@@ -270,12 +272,14 @@ class VideoReader(object):
         self._vcap.release()
 
 
-def frames2video(frame_dir,
-                 video_file,
-                 fps=30,
-                 filename_tmpl='{:06d}.jpg',
-                 start=0,
-                 end=0):
+def frames2video(
+    frame_dir,
+    video_file,
+    fps=30,
+    filename_tmpl='{:06d}.jpg',
+    start=0,
+    end=0,
+):
     """Read the frame images from a directory and join them as a video.
 
     Args:
@@ -388,13 +392,15 @@ def convert_video(in_file, out_file, pre_options='', **kwargs):
 
 
 @check_ffmpeg
-def resize_video(in_file,
-                 out_file,
-                 size=None,
-                 ratio=None,
-                 keep_ar=False,
-                 log_level='info',
-                 **kwargs):
+def resize_video(
+    in_file,
+    out_file,
+    size=None,
+    ratio=None,
+    keep_ar=False,
+    log_level='info',
+    **kwargs,
+):
     """Resize a video
 
     Args:
@@ -427,14 +433,16 @@ def resize_video(in_file,
 
 
 @check_ffmpeg
-def cut_video(in_file,
-              out_file,
-              start=None,
-              end=None,
-              vcodec=None,
-              acodec=None,
-              log_level='info',
-              **kwargs):
+def cut_video(
+    in_file,
+    out_file,
+    start=None,
+    end=None,
+    vcodec=None,
+    acodec=None,
+    log_level='info',
+    **kwargs,
+):
     """Cut a clip from a video.
 
     Args:
@@ -461,12 +469,14 @@ def cut_video(in_file,
 
 
 @check_ffmpeg
-def concat_video(video_list,
-                 out_file,
-                 vcodec=None,
-                 acodec=None,
-                 log_level='info',
-                 **kwargs):
+def concat_video(
+    video_list,
+    out_file,
+    vcodec=None,
+    acodec=None,
+    log_level='info',
+    **kwargs,
+):
     """Concatenate multiple videos into a single one.
 
     Args:

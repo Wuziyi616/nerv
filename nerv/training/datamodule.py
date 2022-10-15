@@ -106,13 +106,15 @@ class StatefulSampler(sampler.Sampler, _StatefulSampler):
 class StatefulDistributedSampler(DistributedSampler, _StatefulSampler):
     """Distributed version of StatefulSampler."""
 
-    def __init__(self,
-                 dataset,
-                 num_replicas=None,
-                 rank=None,
-                 shuffle=True,
-                 seed=0,
-                 drop_last=True):
+    def __init__(
+        self,
+        dataset,
+        num_replicas=None,
+        rank=None,
+        shuffle=True,
+        seed=0,
+        drop_last=True,
+    ):
         assert drop_last, 'Currently only supporting `drop_last=True`'
         super().__init__(
             dataset,
@@ -169,20 +171,22 @@ class BaseDataModule:
             `train_set` with `RepeatDataset` for this times.
     """
 
-    def __init__(self,
-                 params,
-                 train_set,
-                 val_set,
-                 use_ddp=False,
-                 collate_fn=default_collate,
-                 repeat_train_times=-1):
+    def __init__(
+        self,
+        params,
+        train_set,
+        val_set,
+        use_ddp=False,
+        collate_fn=default_collate,
+        repeat_train_times=-1,
+    ):
         assert train_set is not None or val_set is not None, \
             'at least one dataset should be given.'
         self.params = params
         self.train_set = train_set
         self.val_set = val_set
         self.use_ddp = use_ddp
-        self.collate_fn = collate_fn
+        self.collate_fn = default_collate if not collate_fn else collate_fn
         if repeat_train_times > 0:
             assert self.train_set is not None
             self.train_set = RepeatDataset(self.train_set, repeat_train_times)

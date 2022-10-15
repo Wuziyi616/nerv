@@ -1,14 +1,16 @@
 import torch.nn as nn
 
 
-def get_conv(in_channels,
-             out_channels,
-             kernel_size,
-             stride=1,
-             dilation=1,
-             groups=1,
-             bias=True,
-             dim='2d'):
+def get_conv(
+    in_channels,
+    out_channels,
+    kernel_size,
+    stride=1,
+    dilation=1,
+    groups=1,
+    bias=True,
+    dim='2d',
+):
     """Get Conv layer."""
     return eval(f'nn.Conv{dim}')(
         in_channels,
@@ -21,14 +23,16 @@ def get_conv(in_channels,
         bias=bias)
 
 
-def get_deconv(in_channels,
-               out_channels,
-               kernel_size,
-               stride=1,
-               dilation=1,
-               groups=1,
-               bias=True,
-               dim='2d'):
+def get_deconv(
+    in_channels,
+    out_channels,
+    kernel_size,
+    stride=1,
+    dilation=1,
+    groups=1,
+    bias=True,
+    dim='2d',
+):
     """Get Conv layer."""
     return eval(f'nn.ConvTranspose{dim}')(
         in_channels,
@@ -85,15 +89,17 @@ def get_act_func(act):
         raise ValueError(f'Activation function {act} not supported!')
 
 
-def conv_norm_act(in_channels,
-                  out_channels,
-                  kernel_size,
-                  stride=1,
-                  dilation=1,
-                  groups=1,
-                  norm='bn',
-                  act='relu',
-                  dim='2d'):
+def conv_norm_act(
+    in_channels,
+    out_channels,
+    kernel_size,
+    stride=1,
+    dilation=1,
+    groups=1,
+    norm='bn',
+    act='relu',
+    dim='2d',
+):
     """Conv - Norm - Act."""
     conv = get_conv(
         in_channels,
@@ -109,15 +115,17 @@ def conv_norm_act(in_channels,
     return nn.Sequential(conv, normalizer, act_func)
 
 
-def deconv_norm_act(in_channels,
-                    out_channels,
-                    kernel_size,
-                    stride=1,
-                    dilation=1,
-                    groups=1,
-                    norm='bn',
-                    act='relu',
-                    dim='2d'):
+def deconv_norm_act(
+    in_channels,
+    out_channels,
+    kernel_size,
+    stride=1,
+    dilation=1,
+    groups=1,
+    norm='bn',
+    act='relu',
+    dim='2d',
+):
     """ConvTranspose - Norm - Act."""
     deconv = get_deconv(
         in_channels,

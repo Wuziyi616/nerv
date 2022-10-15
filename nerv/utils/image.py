@@ -195,10 +195,12 @@ def resize(img, size, return_scale=False, interpolation=cv2.INTER_LINEAR):
         return resized_img, w_scale, h_scale
 
 
-def resize_like(img,
-                dst_img,
-                return_scale=False,
-                interpolation=cv2.INTER_LINEAR):
+def resize_like(
+    img,
+    dst_img,
+    return_scale=False,
+    interpolation=cv2.INTER_LINEAR,
+):
     """Resize image to the same size of a given image
 
     Args:
@@ -235,11 +237,13 @@ def resize_by_ratio(img, ratio, interpolation=cv2.INTER_LINEAR):
     return cv2.resize(img, new_size, interpolation=interpolation)
 
 
-def resize_keep_ar(img,
-                   max_long_edge,
-                   max_short_edge,
-                   return_scale=False,
-                   interpolation=cv2.INTER_LINEAR):
+def resize_keep_ar(
+    img,
+    max_long_edge,
+    max_short_edge,
+    return_scale=False,
+    interpolation=cv2.INTER_LINEAR,
+):
     """Resize image with aspect ratio unchanged
 
     The long edge of resized image is no greater than max_long_edge, the short

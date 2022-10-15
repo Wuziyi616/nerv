@@ -68,14 +68,16 @@ class BaseMethod(nn.Module):
 
     """
 
-    def __init__(self,
-                 model,
-                 datamodule,
-                 params,
-                 ckp_path,
-                 local_rank=0,
-                 use_ddp=False,
-                 use_fp16=False):
+    def __init__(
+        self,
+        model,
+        datamodule,
+        params,
+        ckp_path,
+        local_rank=0,
+        use_ddp=False,
+        use_fp16=False,
+    ):
         super().__init__()
         self.model = model
         self.params = params

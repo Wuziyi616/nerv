@@ -41,15 +41,17 @@ class CosineAnnealingWarmupRestarts(_LRScheduler):
         last_epoch (int): The index of last epoch. Default: -1.
     """
 
-    def __init__(self,
-                 optimizer: torch.optim.Optimizer,
-                 first_cycle_steps: int,
-                 cycle_mult: float = 1.,
-                 max_lr: Union[float, Tuple] = 0.1,
-                 min_lr: Union[float, Tuple] = 0.001,
-                 warmup_steps: int = 0,
-                 gamma: float = 1.,
-                 last_epoch: int = -1):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        first_cycle_steps: int,
+        cycle_mult: float = 1.,
+        max_lr: Union[float, Tuple] = 0.1,
+        min_lr: Union[float, Tuple] = 0.001,
+        warmup_steps: int = 0,
+        gamma: float = 1.,
+        last_epoch: int = -1,
+    ):
         assert warmup_steps < first_cycle_steps
 
         num_opt = len(optimizer.param_groups)

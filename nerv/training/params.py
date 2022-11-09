@@ -22,6 +22,7 @@ class BaseParams:
     train_batch_size = 64 // gpus
     val_batch_size = train_batch_size * 2
     num_workers = 8
+    grad_accum_steps = 1  # gradient accumulation
 
     # loss configs
     # we need to have `xxx_loss` as a key in the returned dict from the

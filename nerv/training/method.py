@@ -1,4 +1,5 @@
 import os
+import time
 import wandb
 import numpy as np
 from tqdm import tqdm
@@ -14,6 +15,9 @@ from nerv.utils.misc import AverageMeter, MeanMetric
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
+from nerv.training.model import BaseModel
+from nerv.training.params import BaseParams
+from nerv.training.datamodule import BaseDataModule
 from nerv.models.utils import filter_wd_parameters
 
 
@@ -61,6 +65,7 @@ class BaseMethod(nn.Module):
         `self.params`: as `params`.
         `self.ckp_path`: as `ckp_path`.
         `self.local_rank`: as `local_rank`.
+        `self.grad_accum_steps`: gradient accumulation steps.
         `self.use_ddp`: as `use_ddp`.
         `self.use_fp16`: as `use_fp16`.
         `self.gpus`: number of GPUs available, should equal to `params.gpus`.
@@ -70,15 +75,17 @@ class BaseMethod(nn.Module):
 
     def __init__(
         self,
-        model,
-        datamodule,
-        params,
-        ckp_path,
-        local_rank=0,
-        use_ddp=False,
-        use_fp16=False,
+        model: BaseModel,
+        datamodule: BaseDataModule,
+        params: BaseParams,
+        ckp_path: str,
+        local_rank: int = 0,
+        use_ddp: bool = False,
+        use_fp16: bool = False,
     ):
         super().__init__()
+
+        # model & params
         self.model = model
         self.params = params
 
@@ -96,6 +103,7 @@ class BaseMethod(nn.Module):
         self.val_loader = datamodule.val_loader
 
         # training settings
+        self.grad_accum_steps = params.get('grad_accum_steps', 1)
         self.ckp_path = ckp_path
         self._init_training()
 
@@ -203,8 +211,13 @@ class BaseMethod(nn.Module):
                 self.iter_train_loader)) // self.params.train_batch_size
         tqdm_desc = f'Train epoch {self.epoch}, rank {self.local_rank}'
         with tqdm(total=train_steps, desc=tqdm_desc) as t:
+            t1 = time.time()
             for batch_idx, batch_data in enumerate(self.iter_train_loader):
                 # torch.cuda.empty_cache()
+
+                # data time
+                t2 = time.time()
+                data_time = t2 - t1
 
                 # set the batch idx
                 self.epoch_it = batch_idx
@@ -217,6 +230,12 @@ class BaseMethod(nn.Module):
 
                 # model forward, loss computation, backward and optimize
                 out_dict = self._training_step(batch_data)
+
+                # forward time
+                t1 = time.time()
+                forward_time = t1 - t2
+                out_dict['data_time'] = self._make_tensor(data_time)
+                out_dict['forward_time'] = self._make_tensor(forward_time)
 
                 # logging
                 self._log_train(out_dict)
@@ -243,26 +262,52 @@ class BaseMethod(nn.Module):
     def _training_step_fp32(self, batch_data):
         """Loss backward and optimize in the normal FP32 setting."""
         out_dict = self._loss_function(batch_data)
-        loss = out_dict['loss']
+
+        # normalize loss to account for batch accumulation
+        loss = out_dict['loss'] / self.grad_accum_steps
+
+        # BP
         loss.backward()
-        if self.clip_grad > 0.:
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+
+        # weights update
+        if ((self.epoch_it + 1) % self.grad_accum_steps == 0) or \
+                (self.epoch_it + 1 == len(self.iter_train_loader)):
+            # gradient clipping
+            if self.clip_grad > 0.:
+                nn.utils.clip_grad_norm_(self.model.parameters(),
+                                         self.clip_grad)
+
+            # optimize one step
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
         return out_dict
 
     def _training_step_fp16(self, batch_data):
         """Loss backward and optimize in FP16 mixed precision setting."""
         with torch.cuda.amp.autocast():
             out_dict = self._loss_function(batch_data)
-        loss = out_dict['loss']
+
+            # normalize loss to account for batch accumulation
+            loss = out_dict['loss'] / self.grad_accum_steps
+
+        # scaled BP
         self.grad_scaler.scale(loss).backward()
-        if self.clip_grad > 0.:
-            self.grad_scaler.unscale_(self.optimizer)
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
-        self.grad_scaler.step(self.optimizer)
-        self.grad_scaler.update()
-        self.optimizer.zero_grad()
+
+        # weights update
+        if ((self.epoch_it + 1) % self.grad_accum_steps == 0) or \
+                (self.epoch_it + 1 == len(self.iter_train_loader)):
+            # gradient clipping
+            if self.clip_grad > 0.:
+                self.grad_scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(self.model.parameters(),
+                                         self.clip_grad)
+
+            # optimize one step
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            self.optimizer.zero_grad()
+
         return out_dict
 
     def _training_step(self, batch_data):

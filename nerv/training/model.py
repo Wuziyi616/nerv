@@ -33,6 +33,22 @@ class BaseModel(nn.Module):
                 break
         return out_dict
 
+    def _training_epoch_start(self, method=None):
+        """Things to do at the beginning of every training epoch."""
+        pass
+
+    def _training_step_start(self, method=None):
+        """Things to do at the beginning of every training step."""
+        pass
+
+    def _training_step_end(self, method=None):
+        """Things to do at the end of every training step."""
+        pass
+
+    def _training_epoch_end(self, method=None):
+        """Things to do at the end of every training epoch."""
+        pass
+
     @property
     def dtype(self):
         pass

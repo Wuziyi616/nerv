@@ -204,7 +204,8 @@ class BaseMethod(nn.Module):
         tqdm_desc = f'Train epoch {self.epoch}, rank {self.local_rank}'
         with tqdm(total=train_steps, desc=tqdm_desc) as t:
             for batch_idx, batch_data in enumerate(self.iter_train_loader):
-                torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()
+
                 # set the batch idx
                 self.epoch_it = batch_idx
                 batch_data = {
@@ -321,6 +322,9 @@ class BaseMethod(nn.Module):
                 setattr(self.params, var_name, new_var)
                 print(f'Changing params.{var_name} to {new_var}')
 
+        # call the same method for model
+        self.model.module._training_epoch_start(method=self)
+
         print(f'>>> Training epoch {self.epoch} start, rank {self.local_rank}')
 
         # sync DDP training processes at the beginning of epoch
@@ -329,13 +333,18 @@ class BaseMethod(nn.Module):
 
     def _training_step_start(self):
         """Things to do at the beginning of every training step."""
-        pass
+        # call the same method for model
+        self.model.module._training_step_start(method=self)
 
     def _training_step_end(self):
         """Things to do at the end of every training step."""
         if self.scheduler_method == 'step':
             self.scheduler.step()
         self.it += 1
+
+        # call the same method for model
+        self.model.module._training_step_end(method=self)
+
         if (self.epoch_it + 1) % self.save_iter == 0:
             self.save_ckp(save_loader=True)
             # sync DDP training processes at the end of step
@@ -348,6 +357,10 @@ class BaseMethod(nn.Module):
             self.scheduler.step()
         self.epoch += 1
         self.stats_dict = None
+
+        # call the same method for model
+        self.model.module._training_epoch_end(method=self)
+
         self.save_ckp(save_loader=False)
         if self.use_ddp:
             torch.distributed.barrier()
@@ -513,6 +526,8 @@ class BaseMethod(nn.Module):
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
         """
+        torch.cuda.empty_cache()
+
         # if at the middle of training, should save dataloader states
         # if in eval, no need to do so
         if save_loader:

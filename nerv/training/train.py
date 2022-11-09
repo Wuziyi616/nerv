@@ -13,8 +13,6 @@ from datamodule import BaseDataModule
 from method import BaseMethod
 from model import BaseModel
 
-from nerv.utils.io import mkdir_or_exist
-
 
 def main(params):
     if args.fp16:
@@ -33,7 +31,7 @@ def main(params):
     exp_name = os.path.basename(args.params)
     ckp_path = os.path.join(CHECKPOINT, exp_name, 'models')
     if args.local_rank == 0:
-        mkdir_or_exist(os.path.dirname(ckp_path))
+        os.makedirs(os.path.dirname(ckp_path), exist_ok=True)
         wandb_name = f'{exp_name}-{SLURM_JOB_ID}'
 
         # on clusters, quota is limited

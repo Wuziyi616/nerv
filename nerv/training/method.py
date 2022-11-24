@@ -259,6 +259,10 @@ class BaseMethod(nn.Module):
         out_dict['loss'] = loss
         return out_dict
 
+    def _clip_model_grad(self):
+        """Clip model weights' gradients."""
+        nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
+
     def _training_step_fp32(self, batch_data):
         """Loss backward and optimize in the normal FP32 setting."""
         out_dict = self._loss_function(batch_data)
@@ -274,8 +278,7 @@ class BaseMethod(nn.Module):
                 (self.epoch_it + 1 == len(self.iter_train_loader)):
             # gradient clipping
             if self.clip_grad > 0.:
-                nn.utils.clip_grad_norm_(self.model.parameters(),
-                                         self.clip_grad)
+                self._clip_model_grad()
 
             # optimize one step
             self.optimizer.step()
@@ -300,8 +303,7 @@ class BaseMethod(nn.Module):
             # gradient clipping
             if self.clip_grad > 0.:
                 self.grad_scaler.unscale_(self.optimizer)
-                nn.utils.clip_grad_norm_(self.model.parameters(),
-                                         self.clip_grad)
+                self._clip_model_grad()
 
             # optimize one step
             self.grad_scaler.step(self.optimizer)
@@ -401,6 +403,7 @@ class BaseMethod(nn.Module):
         if self.scheduler_method == 'epoch':
             self.scheduler.step()
         self.epoch += 1
+        self._is_last_epoch = (self.epoch == self.max_epochs)
         self.stats_dict = None
 
         # call the same method for model
@@ -411,7 +414,7 @@ class BaseMethod(nn.Module):
             torch.distributed.barrier()
 
         # run one epoch of validation after each training epoch
-        if (self.epoch + 1) % self.eval_interval == 0:
+        if (self.epoch + 1) % self.eval_interval == 0 or self._is_last_epoch:
             self.validation_epoch(self.model.module)
 
     @torch.no_grad()
@@ -449,11 +452,12 @@ class BaseMethod(nn.Module):
                 f'val/{k}': self.stats_dict[k].compute().item()
                 for k in all_keys
             }
-            print(f'Eval epoch {self.epoch}, rank {self.local_rank} result:',
-                  out_dict)
+            print(f'Eval epoch {self.epoch}, rank {self.local_rank} results')
             if self.local_rank == 0:
                 wandb.log(out_dict, step=self.it)
                 print(f'Eval epoch {self.epoch}, rank {self.local_rank} log')
+                for k, v in out_dict.items():
+                    print(f'{k}: {v:.4f}')
 
         self.stats_dict = None
         torch.cuda.empty_cache()

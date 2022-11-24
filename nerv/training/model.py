@@ -49,6 +49,19 @@ class BaseModel(nn.Module):
         """Things to do at the end of every training epoch."""
         pass
 
+    def load_weight(self, ckp_path, strict=True):
+        """Load checkpoint from a file.
+
+        Args:
+            ckp_path (str): Path to checkpoint file.
+            strict (bool, optional): Whether to allow different params for
+                the model and checkpoint. Defaults to True.
+        """
+        ckp = torch.load(ckp_path, map_location='cpu')
+        if 'state_dict' in ckp:
+            ckp = ckp['state_dict']
+        self.load_state_dict(ckp, strict=strict)
+
     @property
     def dtype(self):
         pass

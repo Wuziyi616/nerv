@@ -24,10 +24,97 @@ def scale_lr(optimizer, scale):
         param_group['lr'] = param_group['lr'] * scale
 
 
-class CosineAnnealingWarmupRestarts(_LRScheduler):
-    """CosineLR with Warmup.
+class CosineAnnealingWarmupConstants(_LRScheduler):
+    """CosineLR with Warmup, keep constants after decay.
 
-    Code borrowed from:
+    Code adopted from:
+        https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
+
+    Args:
+        optimizer (Optimizer): Wrapped optimizer.
+        first_cycle_steps (int): First cycle step size.
+        max_lr (float | Tuple): First cycle's max learning rate. Default: 0.1.
+        min_lr (float | Tuple): Min learning rate. Default: 0.001.
+        warmup_steps (int): Linear warmup step size. Default: 0.
+        last_epoch (int): The index of last epoch. Default: -1.
+    """
+
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        first_cycle_steps: int,
+        max_lr: Union[float, Tuple] = 0.1,
+        min_lr: Union[float, Tuple] = 0.001,
+        warmup_steps: int = 0,
+        last_epoch: int = -1,
+    ):
+        assert warmup_steps < first_cycle_steps
+
+        num_opt = len(optimizer.param_groups)
+        if isinstance(max_lr, float):
+            max_lr = [max_lr] * num_opt
+        else:
+            assert isinstance(max_lr, tuple)
+            assert len(max_lr) == num_opt
+        if isinstance(min_lr, float):
+            min_lr = [min_lr] * num_opt
+        else:
+            assert isinstance(min_lr, tuple)
+            assert len(min_lr) == num_opt
+
+        self.first_cycle_steps = first_cycle_steps  # first cycle step size
+        self.max_lr = max_lr  # max learning rate in the current cycle
+        self.min_lr = min_lr  # min learning rate
+        self.warmup_steps = warmup_steps  # warmup step size
+        self.cur_step = last_epoch  # current iter of the cycle
+
+        super().__init__(optimizer, last_epoch)
+
+        # set learning rate min_lr
+        self.init_lr()
+
+    def init_lr(self):
+        self.base_lrs = self.min_lr
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            param_group['lr'] = self.base_lrs[i]
+
+    def get_lr(self):
+        # start training, init lr
+        if self.cur_step == -1:
+            return self.base_lrs
+        # linear warmup
+        elif self.cur_step < self.warmup_steps:
+            return [(max_lr - base_lr) * self.cur_step / self.warmup_steps +
+                    base_lr
+                    for max_lr, base_lr in zip(self.max_lr, self.base_lrs)]
+        # cosine decay
+        elif self.cur_step < self.first_cycle_steps:
+            return [
+                base_lr + (max_lr - base_lr) *
+                (1 + math.cos(math.pi * (self.cur_step - self.warmup_steps) /
+                              (self.first_cycle_steps - self.warmup_steps))) /
+                2 for max_lr, base_lr in zip(self.max_lr, self.base_lrs)
+            ]
+        # keep constant
+        else:
+            return self.base_lrs
+
+    def step(self, epoch=None):
+        if epoch is None:
+            epoch = self.last_epoch + 1
+            self.cur_step = self.cur_step + 1
+        else:
+            self.cur_step = epoch
+
+        self.last_epoch = math.floor(epoch)
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group['lr'] = lr
+
+
+class CosineAnnealingWarmupRestarts(_LRScheduler):
+    """CosineLR with Warmup, restart after decay.
+
+    Code adopted from:
         https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
 
     Args:

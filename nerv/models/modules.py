@@ -20,7 +20,8 @@ def get_conv(
         padding=kernel_size // 2,
         dilation=dilation,
         groups=groups,
-        bias=bias)
+        bias=bias,
+    )
 
 
 def get_deconv(
@@ -43,7 +44,8 @@ def get_deconv(
         output_padding=stride - 1,
         dilation=dilation,
         groups=groups,
-        bias=bias)
+        bias=bias,
+    )
 
 
 def get_normalizer(norm, channels, groups=16, dim='2d'):
@@ -109,7 +111,8 @@ def conv_norm_act(
         dilation=dilation,
         groups=groups,
         bias=norm not in ['bn', 'in'],
-        dim=dim)
+        dim=dim,
+    )
     normalizer = get_normalizer(norm, out_channels, dim=dim)
     act_func = get_act_func(act)
     return nn.Sequential(conv, normalizer, act_func)
@@ -135,7 +138,8 @@ def deconv_norm_act(
         dilation=dilation,
         groups=groups,
         bias=norm not in ['bn', 'in'],
-        dim=dim)
+        dim=dim,
+    )
     normalizer = get_normalizer(norm, out_channels, dim=dim)
     act_func = get_act_func(act)
     return nn.Sequential(deconv, normalizer, act_func)

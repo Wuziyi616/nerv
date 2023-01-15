@@ -34,6 +34,8 @@ class BaseMethod(nn.Module):
         use_ddp (bool, optional): whether use DDP training. Default: False.
         use_fp16 (bool, optional): whether use FP16 mixed precision training.
             Default: False.
+        val_only (bool, optional): whether only test the model on the val_set.
+            Default: False.
 
     Member Variables:
         # model
@@ -82,6 +84,7 @@ class BaseMethod(nn.Module):
         local_rank: int = 0,
         use_ddp: bool = False,
         use_fp16: bool = False,
+        val_only: bool = False,
     ):
         super().__init__()
 
@@ -95,17 +98,20 @@ class BaseMethod(nn.Module):
         self._init_env()
 
         # FP16 mixed precision training
-        self.use_fp16 = use_fp16
-        self._init_amp()
+        if not val_only:
+            self.use_fp16 = use_fp16
+            self._init_amp()
 
         # data
-        self.train_loader = datamodule.train_loader
+        if not val_only:
+            self.train_loader = datamodule.train_loader
         self.val_loader = datamodule.val_loader
 
         # training settings
-        self.grad_accum_steps = params.get('grad_accum_steps', 1)
-        self.ckp_path = ckp_path
-        self._init_training()
+        if not val_only:
+            self.grad_accum_steps = params.get('grad_accum_steps', 1)
+            self.ckp_path = ckp_path
+            self._init_training()
 
     def _init_env(self):
         """Init training environment related settings.
@@ -463,13 +469,51 @@ class BaseMethod(nn.Module):
         torch.cuda.empty_cache()
         print(f'>>> Evaluating end, rank: {self.local_rank}')
 
+    @torch.no_grad()
+    def test(self):
+        """Test one epoch.
+
+        This is usually used for DDP testing some metrics.
+        """
+        print(f'>>> Testing start, rank: {self.local_rank}\n')
+        model = self.model.module
+        model.eval()
+        self.stats_dict = None
+        torch.cuda.empty_cache()
+
+        tqdm_desc = f'Test, rank {self.local_rank}'
+        for batch_data in tqdm(self.val_loader, desc=tqdm_desc):
+            batch_data = {k: v.to(self.device) for k, v in batch_data.items()}
+            out_dict = self._test_step(model, batch_data)
+            self._accumulate_stats(out_dict, test=True)
+
+        # we explicitly follow keys order for DDP sync
+        all_keys = sorted(list(self.stats_dict.keys()))
+        out_dict = {
+            f'val/{k}': self.stats_dict[k].compute().item()
+            for k in all_keys
+        }
+        if self.local_rank == 0:
+            print('Testing results:')
+            for k, v in out_dict.items():
+                print(f'\t{k}: {v:.4f}')
+            self.out_dict = out_dict
+
+        self.stats_dict = None
+        torch.cuda.empty_cache()
+        print(f'\n>>> Testing end, rank: {self.local_rank}')
+
+    def _test_step(self, model, batch_data):
+        """Test one step."""
+        raise NotImplementedError('`_test_step()` is not implemented')
+
     def _setup_optimizer(self):
         """Construct optimizer and lr scheduler."""
         self.optimizer, (self.scheduler, self.scheduler_method) = \
             self._configure_optimizers()
         assert self.scheduler_method in ['step', 'epoch', '']
         if not self.scheduler_method:
-            assert self.optimizer is None
+            assert self.scheduler is None
 
     def _configure_optimizers(self):
         """Returns an optimizer, a scheduler and its frequency (step/epoch)."""
@@ -570,7 +614,7 @@ class BaseMethod(nn.Module):
         }
 
     @torch.no_grad()
-    def save_ckp(self, save_loader=False, keep_num=5):
+    def save_ckp(self, save_loader=False, keep_num=3):
         """Save state_dict of all self.modules.
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
@@ -616,10 +660,12 @@ class BaseMethod(nn.Module):
 
         # we may want to save ckp at the end of every epoch
         # these ckps won't be restricted by `keep_num`
+        # since they won't be automatically loaded during training
+        # we only save the model's state_dict, not training states
         if not save_loader and self.save_epoch_end:
             ckp_path = os.path.join(self.epoch_ckp_path,
                                     f'model_{self.epoch}.pth')
-            torch.save(ckp, ckp_path)
+            torch.save(self.model.module.state_dict(), ckp_path)
             print(f'INFO: saving checkpoint {ckp_path}')
 
     @torch.no_grad()
@@ -639,15 +685,23 @@ class BaseMethod(nn.Module):
                     key=lambda x: os.path.getmtime(
                         os.path.join(self.ckp_path, x)))
                 last_ckp = ckp_files[-1]
-                print(f'INFO: automatically detect checkpoint {last_ckp}')
                 ckp_path = os.path.join(self.ckp_path, last_ckp)
+                try:
+                    ckp = torch.load(ckp_path, map_location='cpu')
+                # in case the last ckp is corrupted
+                except:
+                    if self.local_rank == 0:
+                        os.remove(ckp_path)
+                    ckp_path = None
+                    if len(ckp_files) > 1:
+                        ckp_path = os.path.join(self.ckp_path, ckp_files[-2])
+                        ckp = torch.load(ckp_path, map_location='cpu')
+                print(f'INFO: automatically detect checkpoint {ckp_path}')
 
         if not ckp_path:
             return
 
         print(f'INFO: loading checkpoint {ckp_path}')
-        check_file_exist(ckp_path)
-        ckp = torch.load(ckp_path, map_location='cpu')
         self.it, self.epoch = ckp['it'], ckp['epoch']
         self.model.module.load_state_dict(ckp['state_dict'])
         self.optimizer.load_state_dict(ckp['opt_state_dict'])

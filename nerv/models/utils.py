@@ -13,7 +13,8 @@ def conv_out_shape(in_size, stride, padding, kernel_size, dilation=1):
         return np.floor((in_size + 2 * padding - dilation *
                          (kernel_size - 1) - 1) / float(stride) + 1)
     elif isinstance(in_size, (tuple, list)):
-        return type(in_size)((conv_out_shape(s) for s in in_size))
+        return type(in_size)((conv_out_shape(s, stride, padding, kernel_size,
+                                             dilation) for s in in_size))
     else:
         raise TypeError(f'Got invalid type {type(in_size)} for `in_size`')
 
@@ -31,7 +32,9 @@ def deconv_out_shape(
         return (in_size - 1) * stride - 2 * padding + dilation * (
             kernel_size - 1) + out_padding + 1
     elif isinstance(in_size, (tuple, list)):
-        return type(in_size)((deconv_out_shape(s) for s in in_size))
+        return type(in_size)((deconv_out_shape(s, stride, padding, kernel_size,
+                                               out_padding, dilation)
+                              for s in in_size))
     else:
         raise TypeError(f'Got invalid type {type(in_size)} for `in_size`')
 

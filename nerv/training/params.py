@@ -4,6 +4,7 @@ class BaseParams:
     # training settings
     gpus = 1
     ddp_unused_params = False
+    # decay_epochs = 50  # first decay lr, then constant lr till `max_epochs`
     max_epochs = 100
     san_check_val_step = 2  # to verify code correctness
     print_iter = 50

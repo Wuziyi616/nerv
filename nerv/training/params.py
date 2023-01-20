@@ -1,4 +1,4 @@
-class BaseParams:
+class BaseParams(object):
     project = 'NERV'  # project name for wandb logging
 
     # training settings
@@ -30,11 +30,39 @@ class BaseParams:
     # `calc_train_loss` function in model
     # xxx_loss_w = 1.
 
+    # we support metric monitoring when saving checkpoints
+    ckp_monitor = ''  # e.g. 'val/miou'
+    ckp_monitor_type = 'max'  # 'max' or 'min'
+
     # we support changing some variables values with epoch
     # begin with 1., change to 10. at 40th epoch and then 100. at 80th epoch
     # var1 = 1.
     # var1_all = [1., 10., 100.]
     # var1_t = [40, 80]
+
+    def __getitem__(self, key):
+        """`__getitem__` function similar to dict."""
+        return getattr(self, key)
+
+    def __str__(self):
+        """`__str__` function similar to dict."""
+        all_vars = self._get_all_var_names()
+        # format it in a nice way
+        max_len = max([len(var) for var in all_vars])
+        return f'class {self.project}Params:\n' + '\n'.join(
+            [f'{var:>{max_len}}: {getattr(self, var)}' for var in all_vars])
+
+    def _get_all_var_names(self):
+        """Get all variable names."""
+        all_vars = [var for var in dir(self) if not var.startswith('__')]
+        # remove class methods (callable functions)
+        # weird, cannot filter out `get` by checking callable
+        #   thus manually removing it
+        all_vars.remove('get')
+        for var in all_vars:
+            if callable(getattr(self, var)):
+                all_vars.remove(var)
+        return all_vars
 
     def get(self, key, value=None):
         """`get` function similar to dict."""
@@ -43,13 +71,13 @@ class BaseParams:
         return value
 
     def to_dict(self):
-        all_vars = [var for var in dir(self) if not var.startswith('__')]
-        all_vars.remove('to_dict')
-        all_vars.remove('from_dict')
+        """Convert to dict."""
+        all_vars = self._get_all_var_names()
         return {var: getattr(self, var) for var in all_vars}
 
     @staticmethod
     def from_dict(params_dict):
+        """Create from dict."""
         params = BaseParams()
         for k, v in params_dict.items():
             setattr(params, k, v)

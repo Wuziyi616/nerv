@@ -59,9 +59,6 @@ echo "#!/bin/bash
 #SBATCH --qos=$QOS                                   # for 'high' and 'deadline' QoS, refer to https://support.vectorinstitute.ai/AboutVaughan2
 #SBATCH --time=$TIME                                 # running time limit, 0 as unlimited
 
-# link /checkpoint to current folder
-# ln -sfn /checkpoint/\$USER/\$SLURM_JOB_ID $LOG_DIR
-
 # log some necessary environment params
 echo \$SLURM_JOB_ID >> $LOG_FILE                      # log the job id
 echo \$SLURM_JOB_PARTITION >> $LOG_FILE               # log the job partition

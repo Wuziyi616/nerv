@@ -6,7 +6,7 @@
 > — Pippa Passes
 
 > Graduate's in his heaven. All's right with the code!
-> — Ziyi Wu
+> — The dream of a struggling PhD student
 
 Personal Python toolbox including project templates, useful functions, etc.
 

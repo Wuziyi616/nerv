@@ -1,4 +1,5 @@
 import os
+import copy
 import time
 import wandb
 import numpy as np
@@ -10,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
-from nerv.utils.io import check_file_exist, mkdir_or_exist
+from nerv.utils.io import mkdir_or_exist
 from nerv.utils.misc import AverageMeter, MeanMetric
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
@@ -57,15 +58,21 @@ class BaseMethod(nn.Module):
         # statistics
         `self.it`: total training iterations.
         `self.epoch`: total training epochs.
+        `self.epoch_it`: iteration number in one epoch.
+        `self._is_last_epoch`: used in val, whether the training will be done.
+        `self._is_epoch_end`: used in val, whether the epoch has finished.
         `self.print_iter`: interval between print/log training statistics.
         `self.save_iter`: interval between saving checkpoint.
         `self.save_epoch_end`: whether to save ckp at the end of every epoch.
-        `self.epoch_it`: iteration number in one epoch.
         `self.stats_dict`: accumulate values. Can be used for avg.
 
         # all parameter settings
         `self.params`: as `params`.
         `self.ckp_path`: as `ckp_path`.
+        `self.epoch_ckp_path`: path to save ckp at the end of every epoch.
+        `self.ckp_monitor`: the metric to monitor when saving epoch-end ckps.
+        `self.ckp_monitor_type`: 'min' or 'max'.
+        `self.best_metric_dict`: the `out_dict` of the best val epoch so far.
         `self.local_rank`: as `local_rank`.
         `self.grad_accum_steps`: gradient accumulation steps.
         `self.use_ddp`: as `use_ddp`.
@@ -109,7 +116,6 @@ class BaseMethod(nn.Module):
 
         # training settings
         if not val_only:
-            self.grad_accum_steps = params.get('grad_accum_steps', 1)
             self.ckp_path = ckp_path
             self._init_training()
 
@@ -155,13 +161,21 @@ class BaseMethod(nn.Module):
 
     def _init_training(self):
         # training accumulator
-        self.it, self.epoch = 0, 0
+        self.it, self.epoch, self.epoch_it = 0, 0, 0
+        self._is_last_epoch, self._is_epoch_end = False, False
+
         self.max_epochs = self.params.max_epochs
         self.print_iter = self.params.print_iter
         self.save_iter = int(
             np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
         self.eval_interval = self.params.eval_interval
+
         self.save_epoch_end = self.params.save_epoch_end
+        self.ckp_monitor = self.params.ckp_monitor
+        self.ckp_monitor_type = self.params.ckp_monitor_type
+        assert self.ckp_monitor_type in ['max', 'min'], \
+            f'monitor type {self.ckp_monitor_type} is not supported'
+        self.best_metric_dict = None
 
         if self.local_rank == 0:
             mkdir_or_exist(self.ckp_path)
@@ -171,6 +185,9 @@ class BaseMethod(nn.Module):
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
+
+        # gradient accumulation
+        self.grad_accum_steps = self.params.grad_accum_steps
 
         # construct optimizer and lr_scheduler
         self._setup_optimizer()
@@ -196,8 +213,12 @@ class BaseMethod(nn.Module):
             self.validation_epoch(
                 self.model.module, san_check_step=san_check_val_step)
 
+        self._training_start()
+
         for _ in range(self.epoch, self.max_epochs):
             self.training_epoch()
+
+        self._training_end()
 
     def training_epoch(self):
         """Train one epoch.
@@ -347,10 +368,15 @@ class BaseMethod(nn.Module):
         wandb.log(out_dict, step=self.it)
         self.stats_dict = None
 
+    def _training_start(self):
+        """Things to do at the beginning of training."""
+        pass
+
     def _training_epoch_start(self):
         """Things to do at the beginning of every training epoch."""
         self.optimizer.zero_grad()
         self.train()
+        self._is_epoch_end = False
         self.stats_dict = None
 
         # update some values in self.params depending on epoch number
@@ -410,6 +436,7 @@ class BaseMethod(nn.Module):
             self.scheduler.step()
         self.epoch += 1
         self._is_last_epoch = (self.epoch == self.max_epochs)
+        self._is_epoch_end = True
         self.stats_dict = None
 
         # call the same method for model
@@ -421,7 +448,16 @@ class BaseMethod(nn.Module):
 
         # run one epoch of validation after each training epoch
         if (self.epoch + 1) % self.eval_interval == 0 or self._is_last_epoch:
-            self.validation_epoch(self.model.module)
+            metrics = self.validation_epoch(self.model.module)
+            self.save_ckp(save_loader=False, metrics=metrics)
+
+    def _training_end(self):
+        """Things to do at the end of training."""
+        # print the best metrics
+        if self.local_rank == 0:
+            print('Best metrics:')
+            for k, v in self.best_metrics.items():
+                print(f'\t{k}: {v:.4f}')
 
     @torch.no_grad()
     def validation_epoch(self, model, san_check_step=-1):
@@ -436,6 +472,7 @@ class BaseMethod(nn.Module):
         print(f'>>> Evaluating start, rank: {self.local_rank}')
         model.eval()
         self.stats_dict = None
+        self._is_epoch_end = (san_check_step <= 0)
         torch.cuda.empty_cache()
 
         tqdm_desc = f'Eval epoch {self.epoch}, rank {self.local_rank}'
@@ -463,11 +500,13 @@ class BaseMethod(nn.Module):
                 wandb.log(out_dict, step=self.it)
                 print(f'Eval epoch {self.epoch}, rank {self.local_rank} log')
                 for k, v in out_dict.items():
-                    print(f'{k}: {v:.4f}')
+                    print(f'\t{k}: {v:.4f}')
 
         self.stats_dict = None
         torch.cuda.empty_cache()
         print(f'>>> Evaluating end, rank: {self.local_rank}')
+
+        return out_dict
 
     @torch.no_grad()
     def test(self):
@@ -490,18 +529,20 @@ class BaseMethod(nn.Module):
         # we explicitly follow keys order for DDP sync
         all_keys = sorted(list(self.stats_dict.keys()))
         out_dict = {
-            f'val/{k}': self.stats_dict[k].compute().item()
+            f'test/{k}': self.stats_dict[k].compute().item()
             for k in all_keys
         }
         if self.local_rank == 0:
             print('Testing results:')
             for k, v in out_dict.items():
                 print(f'\t{k}: {v:.4f}')
-            self.out_dict = out_dict
+        self.out_dict = out_dict  # for reading in main process
 
         self.stats_dict = None
         torch.cuda.empty_cache()
         print(f'\n>>> Testing end, rank: {self.local_rank}')
+
+        return out_dict
 
     def _test_step(self, model, batch_data):
         """Test one step."""
@@ -614,7 +655,7 @@ class BaseMethod(nn.Module):
         }
 
     @torch.no_grad()
-    def save_ckp(self, save_loader=False, keep_num=3):
+    def save_ckp(self, save_loader=False, keep_num=3, metrics=None):
         """Save state_dict of all self.modules.
 
         The default save name is '{self.ckp_path}/model_{self.it}.pth'.
@@ -628,6 +669,45 @@ class BaseMethod(nn.Module):
 
         # only rank 0 process save ckp
         if self.local_rank != 0:
+            return
+
+        # save epoch-end ckps, which aren't restricted by `keep_num`
+        # if `metrics` are provided and `self.ckp_monitor` exists, we only
+        #     save the ckp if the current metric is better than the best
+        # since they won't be automatically loaded during training, we only
+        #     save the model's state_dict, not training states
+        if not save_loader and self.save_epoch_end and metrics is not None:
+            if self.ckp_monitor in metrics:
+                cur_metric = metrics[self.ckp_monitor]
+                if self.best_metric_dict is None:
+                    self.best_metric_dict = copy.deepcopy(metrics)
+                elif self.ckp_monitor_type == 'min' and \
+                        cur_metric < self.best_metric_dict[self.ckp_monitor]:
+                    self.best_metric_dict = copy.deepcopy(metrics)
+                elif self.ckp_monitor_type == 'max' and \
+                        cur_metric > self.best_metric_dict[self.ckp_monitor]:
+                    self.best_metric_dict = copy.deepcopy(metrics)
+                else:
+                    print('INFO: skip epoch-end ckp saving')
+                    return
+                # print the best metrics so far
+                print(f'Epoch {self.epoch} achieves best metrics:')
+                for k, v in self.best_metric_dict.items():
+                    print(f'\t{k}: {v:.4f}')
+                # save it
+                ckp_path = os.path.join(
+                    self.epoch_ckp_path, f'model_{self.epoch}-'
+                    f'{self.ckp_monitor}_{cur_metric:.4f}.pth')
+                # create a soft link to `best.pth`
+                ln_ckp_path = os.path.join(self.epoch_ckp_path, 'best.pth')
+                if os.path.exists(ln_ckp_path):
+                    os.remove(ln_ckp_path)  # remove the old one
+                os.system(f'ln -s {ckp_path} {ln_ckp_path}')
+            else:
+                ckp_path = os.path.join(self.epoch_ckp_path,
+                                        f'model_{self.epoch}.pth')
+            torch.save(self.model.module.state_dict(), ckp_path)
+            print(f'INFO: saving checkpoint {ckp_path}')
             return
 
         # auto remove earlier ckps
@@ -647,6 +727,7 @@ class BaseMethod(nn.Module):
             'opt_state_dict': self.optimizer.state_dict(),
             'it': self.it,
             'epoch': self.epoch,
+            'best_metric_dict': self.best_metric_dict,
         }
         if self.scheduler_method:
             ckp['scheduler_state_dict'] = self.scheduler.state_dict()
@@ -657,16 +738,6 @@ class BaseMethod(nn.Module):
             ckp.update(train_sampler_states)
         torch.save(ckp, ckp_path)
         print(f'INFO: saving checkpoint {ckp_path}')
-
-        # we may want to save ckp at the end of every epoch
-        # these ckps won't be restricted by `keep_num`
-        # since they won't be automatically loaded during training
-        # we only save the model's state_dict, not training states
-        if not save_loader and self.save_epoch_end:
-            ckp_path = os.path.join(self.epoch_ckp_path,
-                                    f'model_{self.epoch}.pth')
-            torch.save(self.model.module.state_dict(), ckp_path)
-            print(f'INFO: saving checkpoint {ckp_path}')
 
     @torch.no_grad()
     def load_ckp(self, ckp_path=None, auto_detect=True):
@@ -691,6 +762,7 @@ class BaseMethod(nn.Module):
                 # in case the last ckp is corrupted
                 except:
                     if self.local_rank == 0:
+                        print(f'WARNING: {ckp_path} corrupted, removing...')
                         os.remove(ckp_path)
                     ckp_path = None
                     if len(ckp_files) > 1:
@@ -703,6 +775,7 @@ class BaseMethod(nn.Module):
 
         print(f'INFO: loading checkpoint {ckp_path}')
         self.it, self.epoch = ckp['it'], ckp['epoch']
+        self.best_metric_dict = ckp.get('best_metric_dict', None)
         self.model.module.load_state_dict(ckp['state_dict'])
         self.optimizer.load_state_dict(ckp['opt_state_dict'])
         if self.scheduler_method:

@@ -12,6 +12,7 @@ import torch
 from datamodule import BaseDataModule
 from method import BaseMethod
 from model import BaseModel
+from utils import find_old_slurm_id
 
 
 def main(params):
@@ -42,9 +43,16 @@ def main(params):
                 os.system(r'ln -s /checkpoint/{}/{}/ {}'.format(
                     usr, SLURM_JOB_ID, ckp_path))
                 wandb_id = wandb_name
+            # the dir exists, which means we are resuming training
+            # retrieve the old slurm id so that we can resume the wandb run!
             else:
-                os.makedirs(ckp_path, exist_ok=True)
-                wandb_id = None
+                slurm_id = find_old_slurm_id(ckp_path)
+                if slurm_id is None:
+                    slurm_id = SLURM_JOB_ID
+                wandb_name = wandb_id = f'{exp_name}-{slurm_id}'
+        else:
+            os.makedirs(ckp_path, exist_ok=True)
+            wandb_id = None
 
         wandb.init(
             project=params.project,

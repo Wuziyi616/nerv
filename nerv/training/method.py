@@ -454,10 +454,11 @@ class BaseMethod(nn.Module):
     def _training_end(self):
         """Things to do at the end of training."""
         # print the best metrics
-        if self.local_rank == 0:
-            print('Best metrics:')
-            for k, v in self.best_metrics.items():
-                print(f'\t{k}: {v:.4f}')
+        if self.local_rank != 0 or self.best_metric_dict is None:
+            return
+        print('Best metrics:')
+        for k, v in self.best_metric_dict.items():
+            print(f'\t{k}: {v:.4f}')
 
     @torch.no_grad()
     def validation_epoch(self, model, san_check_step=-1):

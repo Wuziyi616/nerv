@@ -11,6 +11,7 @@ class BaseParams(object):
     save_interval = 1.0  # save every (num_epoch_iters * save_interval) iters
     eval_interval = 1  # should be int, number of epochs between each eval
     save_epoch_end = False  # save ckp at the end of every epoch
+    n_samples = 5  # number of visualizations after each evaluation
 
     # optimizer settings
     optimizer = 'Adam'

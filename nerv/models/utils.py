@@ -60,8 +60,13 @@ def filter_wd_parameters(model, skip_list=()):
     w_name.sort()
     b_name.sort()
     no_decay_name.sort()
-    no_decay = [model.get_submodule(m).weight for m in w_name] + \
-        [model.get_submodule(m).bias for m in b_name]
+    no_decay = [
+        model.get_submodule(m).weight
+        for m in w_name if model.get_submodule(m).weight.requires_grad
+    ] + [
+        model.get_submodule(m).bias
+        for m in b_name if model.get_submodule(m).bias.requires_grad
+    ]
     for name in no_decay_name:
         no_decay += [
             p for p in model.get_submodule(m).parameters()

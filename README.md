@@ -9,6 +9,7 @@
 > — The dream of a struggling PhD student
 
 Personal Python toolbox including project templates, useful functions, etc.
+The training framework is tailored for the computing cluster at [Vector Institute](https://vectorinstitute.ai/), but can also be applied to other platforms.
 
 ## Credit
 
@@ -33,3 +34,7 @@ First manually install PyTorch with cuda support (see `requirements.txt` for ver
 
 -   Some users have encountered a weird version issue with `opencv`.
     For `nerv-v0.1.0`, `opencv-python==4.5.5.64`, `4.5.3.56` and `4.6.0.66` are three tested versions.
+
+## Related Projects
+
+-   [SlotFormer](https://github.com/pairlab/SlotFormer) (ICLR'23)

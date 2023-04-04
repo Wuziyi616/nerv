@@ -356,7 +356,8 @@ class BaseMethod(nn.Module):
         # accumulate results till print interval
         self._accumulate_stats(out_dict)
 
-        if (self.epoch_it + 1) % self.print_iter != 0:
+        if (self.epoch_it + 1) % self.print_iter != 0 and \
+                (self.epoch_it + 1) != len(self.iter_train_loader):
             return
 
         out_dict = {f'train/{k}': v.avg for k, v in self.stats_dict.items()}
@@ -461,7 +462,7 @@ class BaseMethod(nn.Module):
             print(f'\t{k}: {v:.4f}')
 
     @torch.no_grad()
-    def validation_epoch(self, model, san_check_step=-1):
+    def validation_epoch(self, model, san_check_step=-1, sample_vis=False):
         """Validate one epoch.
 
         We aggregate the avg of all statistics and only log once.
@@ -507,7 +508,35 @@ class BaseMethod(nn.Module):
         torch.cuda.empty_cache()
         print(f'>>> Evaluating end, rank: {self.local_rank}')
 
+        # potential visualization after every epoch at rank 0 process
+        if self.local_rank != 0:
+            return
+        if sample_vis:
+            self._sample_vis(model)
+
         return out_dict
+
+    @staticmethod
+    def _get_sample_idx(N, dst):
+        """Load data uniformly from the dataset."""
+        dst_len = len(dst)  # e.g. sometimes we want videos instead of clips
+        N = N - 1 if dst_len % N != 0 else N
+        sampled_idx = torch.arange(0, dst_len, dst_len // N).numpy().tolist()
+        return sampled_idx
+
+    @torch.no_grad()
+    def _sample_vis(self, model):
+        """Sample and visualize some model predictions.
+
+        `model` is a simple nn.Module, not warpped in e.g. DataParallel.
+        """
+        # model.eval()
+        # dst = self.val_loader.dataset
+        # sampled_idx = self._get_sample_idx(self.params.n_samples, dst)
+        # for i in sampled_idx:
+        #     pass
+        # torch.cuda.empty_cache()
+        pass
 
     @torch.no_grad()
     def test(self):
@@ -747,6 +776,8 @@ class BaseMethod(nn.Module):
         Support automatic detection of existing checkpoints.
         Useful in SLURM preemption systems.
         """
+        ckp = None
+
         # automatically detect checkpoints
         if auto_detect and os.path.exists(self.ckp_path):
             ckp_files = os.listdir(self.ckp_path)
@@ -771,7 +802,11 @@ class BaseMethod(nn.Module):
                         ckp = torch.load(ckp_path, map_location='cpu')
                 print(f'INFO: automatically detect checkpoint {ckp_path}')
 
-        if not ckp_path:
+        # load input ckp when auto-detect fails
+        if ckp is None and ckp_path and os.path.isfile(ckp_path):
+            ckp = torch.load(ckp_path, map_location='cpu')
+
+        if ckp is None:
             return
 
         print(f'INFO: loading checkpoint {ckp_path}')

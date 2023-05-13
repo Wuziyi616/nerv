@@ -1,4 +1,4 @@
-# tested with python 3.8.8
+# tested with python 3.8.8/3.9.16
 six
 tqdm
 numpy
@@ -11,9 +11,13 @@ moviepy
 imageio
 
 # please install PyTorch + CUDA manually (conda is recommended)
-# one tested combination is pytorch 1.10.1 and torchvision 0.11.2
 # see: https://pytorch.org/get-started/previous-versions/#linux-and-windows-2
-#   both cuda11.3 and cuda10.2 are tested
+# tested combinations:
+# - pytorch 1.10.1 + cuda 10.2/11.1/11.3
+# - pytorch 1.12.1 + cuda 11.3
+# - pytorch 2.0.1 + cuda 11.8 (the latest version we tested)
+# you may also want to install pytorch-lightning manually
+# because the latest PL 2.x requires PyTorch 2.x, which requires CUDA >=11.7
 # torch
 # torchvision
 pytorch-lightning

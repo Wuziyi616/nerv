@@ -89,6 +89,7 @@ if __name__ == "__main__":
     parser.add_argument('--ddp', action='store_true')
     parser.add_argument('--cudnn', action='store_true')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local-rank', type=int, default=0)
     args = parser.parse_args()
 
     if args.params.endswith('.py'):

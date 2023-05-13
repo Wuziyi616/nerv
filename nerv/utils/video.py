@@ -9,6 +9,7 @@ import cv2
 from cv2 import (CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS,
                  CAP_PROP_FRAME_COUNT, CAP_PROP_FOURCC, CAP_PROP_POS_FRAMES,
                  VideoWriter_fourcc)
+from moviepy.editor import VideoFileClip, clips_array
 
 from nerv.utils.image import resize
 from nerv.utils.misc import convert4save
@@ -498,3 +499,71 @@ def concat_video(
     convert_video(
         tmp_filename, out_file, pre_options='-f concat -safe 0', **options)
     os.remove(tmp_filename)
+
+
+#######################################
+# Methods using moviepy
+#######################################
+
+
+def read_video_clip(path):
+    """Read the video clip."""
+    return VideoFileClip(path)
+
+
+def stack_video_clips(clips, nrow):
+    """Stack the video clips into a grid."""
+    assert isinstance(clips[0], VideoFileClip)
+    ncol = len(clips) // nrow
+    assert ncol * nrow == len(clips)
+    stack_clips = [[] for _ in range(nrow)]
+    for i, clip in enumerate(clips):
+        stack_clips[i // ncol].append(clip)
+    return clips_array(stack_clips)
+
+
+def vstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
+    """Stack the video clips vertically."""
+    assert isinstance(clips[0], (VideoFileClip, str))
+    if isinstance(clips[0], str):
+        clips = [read_video_clip(clip) for clip in clips]
+    # add margins on the upper and lower sides of each clip
+    if padding > 0:
+        for i in range(len(clips)):
+            top = bottom = padding // 2
+            if i == 0:
+                top = 0
+            if i == len(clips) - 1:
+                bottom = 0
+            clips[i] = clips[i].margin(
+                top=top, bottom=bottom, color=pad_value)
+    return clips_array([[clip] for clip in clips])
+
+
+def hstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
+    """Stack the video clips horizontally."""
+    assert isinstance(clips[0], (VideoFileClip, str))
+    if isinstance(clips[0], str):
+        clips = [read_video_clip(clip) for clip in clips]
+    # add margins on the left and right sides of each clip
+    if padding > 0:
+        for i in range(len(clips)):
+            left = right = padding // 2
+            if i == 0:
+                left = 0
+            if i == len(clips) - 1:
+                right = 0
+            clips[i] = clips[i].margin(
+                left=left, right=right, color=pad_value)
+    return clips_array([clips])
+
+
+def save_video_clip(clip, path):
+    """Save the video clip."""
+    clip.write_videofile(path)
+
+
+def mp42gif(path):
+    """Read a mp4 video and save it as a gif."""
+    video = read_video_clip(path)
+    video.write_gif(path.replace('.mp4', '.gif'))

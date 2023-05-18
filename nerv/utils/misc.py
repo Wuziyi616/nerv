@@ -16,6 +16,12 @@ def datetime2str(form='%Y-%m-%d_%H-%M-%S'):
     return datetime
 
 
+def sort_file_by_time(files):
+    """Sort filenames by its created time."""
+    # the first one is the oldest (earliest created)
+    return sorted(files, key=lambda x: os.path.getmtime(x))
+
+
 def assert_array_shape(xyz, shapes=()):
     """Check array shape.
 

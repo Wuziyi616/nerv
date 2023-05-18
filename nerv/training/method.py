@@ -12,7 +12,7 @@ import torch.optim as optim
 import torch.distributed as dist
 
 from nerv.utils.io import mkdir_or_exist
-from nerv.utils.misc import AverageMeter, MeanMetric
+from nerv.utils.misc import AverageMeter, MeanMetric, sort_file_by_time
 from nerv.utils.tensor import ddp_all_gather
 from nerv.utils.conversion import is_list_of
 from nerv.training.lr import get_lr
@@ -466,6 +466,10 @@ class BaseMethod(nn.Module):
         print('Best metrics:')
         for k, v in self.best_metric_dict.items():
             print(f'\t{k}: {v:.4f}')
+        # log to wandb
+        best_dict = {f'{k}_best': v for k, v in self.best_metric_dict.items()}
+        if self.local_rank == 0:
+            wandb.log(best_dict, step=self.it)
 
     @torch.no_grad()
     def validation_epoch(self, model, san_check_step=-1, sample_vis=False):
@@ -737,16 +741,14 @@ class BaseMethod(nn.Module):
         # auto remove earlier ckps
         ckp_files = os.listdir(self.ckp_path)
         ckp_files = [
-            ckp for ckp in ckp_files
+            os.path.join(self.ckp_path, ckp) for ckp in ckp_files
             if ckp.endswith('.pth') and ckp.startswith('model_')
         ]
         if keep_num > 0 and len(ckp_files) >= keep_num:
-            ckp_files = sorted(
-                ckp_files,
-                key=lambda x: os.path.getmtime(os.path.join(self.ckp_path, x)))
+            ckp_files = sort_file_by_time(ckp_files)
             del_ckp = ckp_files[:-(keep_num - 1)]
             for x in del_ckp:
-                os.remove(os.path.join(self.ckp_path, x))
+                os.remove(x)
 
         ckp_path = os.path.join(self.ckp_path, f'model_{self.it}.pth')
         ckp = {

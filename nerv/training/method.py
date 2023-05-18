@@ -164,19 +164,25 @@ class BaseMethod(nn.Module):
         self.it, self.epoch, self.epoch_it = 0, 0, 0
         self._is_last_epoch, self._is_epoch_end = False, False
 
+        # training epoch/step settings
         self.max_epochs = self.params.max_epochs
         self.print_iter = self.params.print_iter
         self.save_iter = int(
             np.ceil(len(self.train_loader) * self.params.save_interval)) + 1
         self.eval_interval = self.params.eval_interval
 
+        # checkpoint settings
         self.save_epoch_end = self.params.save_epoch_end
         self.ckp_monitor = self.params.ckp_monitor
         self.ckp_monitor_type = self.params.ckp_monitor_type
         assert self.ckp_monitor_type in ['max', 'min'], \
             f'monitor type {self.ckp_monitor_type} is not supported'
-        self.best_metric_dict = None
+        if self.ckp_monitor_type == 'max':
+            self.best_metric_dict = {self.ckp_monitor: -1e8}
+        else:
+            self.best_metric_dict = {self.ckp_monitor: 1e8}
 
+        # dirs for saving checkpoints
         if self.local_rank == 0:
             mkdir_or_exist(self.ckp_path)
             if self.save_epoch_end:
@@ -701,48 +707,39 @@ class BaseMethod(nn.Module):
         if self.local_rank != 0:
             return
 
-        # save epoch-end ckps, which aren't restricted by `keep_num`
-        # if `metrics` are provided and `self.ckp_monitor` exists, we only
-        #     save the ckp if the current metric is better than the best
-        # since they won't be automatically loaded during training, we only
-        #     save the model's state_dict, not training states
-        if not save_loader and self.save_epoch_end and metrics is not None:
-            if self.ckp_monitor in metrics:
-                cur_metric = metrics[self.ckp_monitor]
-                if self.best_metric_dict is None:
-                    self.best_metric_dict = copy.deepcopy(metrics)
-                elif self.ckp_monitor_type == 'min' and \
-                        cur_metric < self.best_metric_dict[self.ckp_monitor]:
-                    self.best_metric_dict = copy.deepcopy(metrics)
-                elif self.ckp_monitor_type == 'max' and \
-                        cur_metric > self.best_metric_dict[self.ckp_monitor]:
-                    self.best_metric_dict = copy.deepcopy(metrics)
-                else:
-                    print('INFO: skip epoch-end ckp saving')
-                    return
+        # if `metrics` are provided, check whether to save it as 'best.pth'
+        if metrics is not None and self.ckp_monitor in metrics:
+            cur_v = metrics[self.ckp_monitor]
+            best_v = self.best_metric_dict[self.ckp_monitor]
+            if (self.ckp_monitor_type == 'min' and cur_v < best_v) or \
+                    (self.ckp_monitor_type == 'max' and cur_v > best_v):
+                self.best_metric_dict = copy.deepcopy(metrics)
                 # print the best metrics so far
                 print(f'Epoch {self.epoch} achieves best metrics:')
                 for k, v in self.best_metric_dict.items():
                     print(f'\t{k}: {v:.4f}')
                 # save it
-                ckp_path = os.path.join(
-                    self.epoch_ckp_path, f'model_{self.epoch}-'
-                    f'{self.ckp_monitor}_{cur_metric:.4f}.pth')
-                # create a soft link to `best.pth`
-                ln_ckp_path = os.path.join(self.epoch_ckp_path, 'best.pth')
-                if os.path.exists(ln_ckp_path):
-                    os.remove(ln_ckp_path)  # remove the old one
-                os.system(f'ln -s {ckp_path} {ln_ckp_path}')
-            else:
-                ckp_path = os.path.join(self.epoch_ckp_path,
-                                        f'model_{self.epoch}.pth')
+                ckp_path = os.path.join(self.ckp_path, 'best.pth')
+                if os.path.exists(ckp_path):
+                    os.remove(ckp_path)  # remove the old one
+                torch.save(self.model.module.state_dict(), ckp_path)
+                print(f'INFO: saving current best checkpoint {ckp_path}')
+
+        # save epoch-end ckps, which aren't restricted by `keep_num`
+        # since they won't be automatically loaded during training, we only
+        #     save the model's state_dict, not training states
+        if not save_loader and self.save_epoch_end:
+            ckp_path = os.path.join(self.epoch_ckp_path,
+                                    f'model_{self.epoch}.pth')
             torch.save(self.model.module.state_dict(), ckp_path)
             print(f'INFO: saving checkpoint {ckp_path}')
-            return
 
         # auto remove earlier ckps
         ckp_files = os.listdir(self.ckp_path)
-        ckp_files = [ckp for ckp in ckp_files if ckp.endswith('.pth')]
+        ckp_files = [
+            ckp for ckp in ckp_files
+            if ckp.endswith('.pth') and ckp.startswith('model_')
+        ]
         if keep_num > 0 and len(ckp_files) >= keep_num:
             ckp_files = sorted(
                 ckp_files,
@@ -811,7 +808,7 @@ class BaseMethod(nn.Module):
 
         print(f'INFO: loading checkpoint {ckp_path}')
         self.it, self.epoch = ckp['it'], ckp['epoch']
-        self.best_metric_dict = ckp.get('best_metric_dict', None)
+        self.best_metric_dict = ckp['best_metric_dict']
         self.model.module.load_state_dict(ckp['state_dict'])
         self.optimizer.load_state_dict(ckp['opt_state_dict'])
         if self.scheduler_method:

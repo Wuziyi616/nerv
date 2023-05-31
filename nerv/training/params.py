@@ -4,7 +4,6 @@ class BaseParams(object):
     # training settings
     gpus = 1
     ddp_unused_params = False
-    # decay_epochs = 50  # first decay lr, then constant lr till `max_epochs`
     max_epochs = 100
     san_check_val_step = 2  # to verify code correctness
     print_iter = 50
@@ -34,6 +33,10 @@ class BaseParams(object):
     # we support metric monitoring when saving checkpoints
     ckp_monitor = ''  # e.g. 'val/miou'
     ckp_monitor_type = 'max'  # 'max' or 'min'
+    copy_ckp_end = False  # the ckp_path might be purged after training ends
+    # we support copying the last/best ckp to a new path
+    # if `True`, move it to `ckp_path/../`
+    # or you can specify a new path by setting it to a str
 
     # we support changing some variables values with epoch
     # begin with 1., change to 10. at 40th epoch and then 100. at 80th epoch

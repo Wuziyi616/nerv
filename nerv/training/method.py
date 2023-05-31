@@ -2,6 +2,7 @@ import os
 import copy
 import time
 import wandb
+import shutil
 import numpy as np
 from tqdm import tqdm
 from datetime import timedelta
@@ -188,6 +189,8 @@ class BaseMethod(nn.Module):
             if self.save_epoch_end:
                 self.epoch_ckp_path = os.path.join(self.ckp_path, 'epoch')
                 mkdir_or_exist(self.epoch_ckp_path)
+            self.last_ckp_path = ''
+            self.best_ckp_path = ''
 
         # gradient clipping
         self.clip_grad = self.params.clip_grad
@@ -461,12 +464,29 @@ class BaseMethod(nn.Module):
     def _training_end(self):
         """Things to do at the end of training."""
         # print the best metrics
-        if self.local_rank != 0 or self.best_metric_dict is None:
+        if self.local_rank != 0:
             return
+
+        # potentially move the last/best checkpoint to avoid auto-purge
+        s = self.params.copy_ckp_end
+        if s:
+            ckp_path = self.last_ckp_path if \
+                self.best_metric_dict is None else self.best_ckp_path
+            ckp_name = os.path.basename(ckp_path)
+            if isinstance(s, str) and os.path.isdir(s):
+                s = os.path.join(s, ckp_name)
+            else:  # copy to one level up
+                s = os.path.join(os.path.dirname(self.ckp_path), ckp_name)
+            print(f'Copying {ckp_path} to {s}')
+            shutil.copyfile(ckp_path, s)
+
+        if self.best_metric_dict is None:
+            return
+
+        # log the best metrics
         print('Best metrics:')
         for k, v in self.best_metric_dict.items():
             print(f'\t{k}: {v:.4f}')
-        # log to wandb
         best_dict = {f'{k}_best': v for k, v in self.best_metric_dict.items()}
         if self.local_rank == 0:
             wandb.log(best_dict, step=self.it)
@@ -728,6 +748,7 @@ class BaseMethod(nn.Module):
                     os.remove(ckp_path)  # remove the old one
                 torch.save(self.model.module.state_dict(), ckp_path)
                 print(f'INFO: saving current best checkpoint {ckp_path}')
+                self.best_ckp_path = ckp_path
 
         # save epoch-end ckps, which aren't restricted by `keep_num`
         # since they won't be automatically loaded during training, we only
@@ -767,6 +788,7 @@ class BaseMethod(nn.Module):
             ckp.update(train_sampler_states)
         torch.save(ckp, ckp_path)
         print(f'INFO: saving checkpoint {ckp_path}')
+        self.last_ckp_path = ckp_path
 
     @torch.no_grad()
     def load_ckp(self, ckp_path=None, auto_detect=True):

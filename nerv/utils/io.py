@@ -164,10 +164,36 @@ def strip_suffix(file):
 
     Args:
         file (str): string to be processed.
+
+    Returns:
+        str: filename without suffix.
     """
     assert isinstance(file, str)
     suffix = file.split('.')[-1]
     return file[:-(len(suffix) + 1)]
+
+
+def get_suffix(file):
+    """Return the suffix of a file.
+    E.g. 'mp4' for 'xxx/video.mp4'.
+
+    Args:
+        file (str): string to be processed.
+
+    Returns:
+        str: suffix of the file.
+    """
+    assert isinstance(file, str)
+    suffix = file.split('.')[-1]
+    return suffix
+
+
+def strip_dir(dir_name):
+    """Remove the last slash ('/') of a dir if there is."""
+    if dir_name[-1] == '/':
+        return dir_name[:-1]
+    else:
+        return dir_name
 
 
 def check_file_exist(filename, msg_tmpl='file "{}" not exist:'):

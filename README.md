@@ -57,7 +57,7 @@ Greatly inspired by and lots of code borrowed from:
     We recommend to always use `CUDA_VISIBLE_DEVICES=0,...` to run python commands.
 
 -   Some users have encountered a weird version issue with `opencv`.
-    For `nerv>=0.1.0,<=v0.2.0`, `opencv-python==4.5.5.64`, `4.5.3.56` and `4.6.0.66` are three tested versions.
+    For `nerv>=0.1.0,<=v0.2.0`, `opencv-python==4.5.5.64`, `4.6.0.66`, and `4.7.0.72` are three tested versions.
 
 ## Related Projects
 

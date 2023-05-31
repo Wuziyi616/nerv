@@ -42,6 +42,7 @@ def main(params):
                 usr = pwd.getpwuid(os.getuid())[0]
                 os.system(r'ln -s /checkpoint/{}/{}/ {}'.format(
                     usr, SLURM_JOB_ID, ckp_path))
+                os.system(f"touch {os.path.join(ckp_path, 'DELAYPURGE')}")
                 wandb_id = wandb_name
             # the dir exists, which means we are resuming training
             # retrieve the old slurm id so that we can resume the wandb run!

@@ -28,6 +28,13 @@ Greatly inspired by and lots of code borrowed from:
 
 ### Possible Issues
 
+-   Our code automatically detect previous checkpoints according to the name of the config file.
+    For example, if your config is `xxx_params.py`, we will save/load checkpoints under `checkpoint/xxx_params/models/`.
+    Therefore, if you launch two runs with the same config file (even if their content are different), your new run might load the checkpoints from the old run.
+    Instead, you should copy the config file to a new file, re-name it (potentially doing some modifications to test new settings), and thus avoid detecting old checkpoints.
+
+    If you just want to run the same config file multiple times (e.g. 3 random seeds), you should use the [dup_run_sbatch.sh](./nerv/scripts/dup_run_sbatch.sh) script, which adds different suffix to differentiate the config files.
+
 -   When you run the code with multi-GPU, we have implemented DDP in the Trainer.
     Please replace
 

@@ -1,10 +1,11 @@
 import numpy as np
 
+import torch
 from torch.nn import LayerNorm, GroupNorm
 from torch.nn.modules.batchnorm import _BatchNorm
 from torch.nn.modules.instancenorm import _InstanceNorm
 
-from nerv.utils.misc import array_in_list
+from nerv.utils import array_in_list
 
 
 def conv_out_shape(in_size, stride, padding, kernel_size, dilation=1):
@@ -80,3 +81,33 @@ def filter_wd_parameters(model, skip_list=()):
     decay_name.sort()
     decay = [model.get_parameter(name) for name in decay_name]
     return {'decay': list(decay), 'no_decay': list(no_decay)}
+
+
+def temporal_wrapper(func):
+    """A wrapper to make the model compatible with both 4D and 5D inputs."""
+
+    def f(cls, x):
+        """x is either [B, C, H, W] or [B, T, C, H, W]."""
+        B = x.shape[0]
+        if len(x.shape) == 5:
+            unflatten = True
+            x = x.flatten(0, 1)
+        else:
+            unflatten = False
+
+        outs = func(cls, x)
+
+        if unflatten:
+            if isinstance(outs, tuple):
+                outs = [
+                    o.unflatten(0, (B, -1))
+                    if isinstance(o, torch.Tensor) and o.ndim else o
+                    for o in outs
+                ]
+                return tuple(outs)
+            else:
+                return outs.unflatten(0, (B, -1))
+        else:
+            return outs
+
+    return f

@@ -5,15 +5,16 @@ import tempfile
 from collections import OrderedDict
 from os import path
 
+import numpy as np
 import cv2
 from cv2 import (CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS,
                  CAP_PROP_FRAME_COUNT, CAP_PROP_FOURCC, CAP_PROP_POS_FRAMES,
                  VideoWriter_fourcc)
 from moviepy.editor import VideoFileClip, clips_array
 
-from nerv.utils.image import resize
-from nerv.utils.misc import convert4save
-from nerv.utils.io import check_file_exist, mkdir_or_exist, scandir
+from .image import resize
+from .misc import convert4save
+from .io import check_file_exist, mkdir_or_exist, scandir
 
 
 class Cache(object):
@@ -197,10 +198,12 @@ class VideoReader(object):
                 self._cache.put(frame_id, img)
         return img
 
-    def read_video(self):
+    def read_video(self, stack=False):
         """Read the whole video as a list of images."""
         self._set_real_position(0)
         frames = [self.read() for _ in range(len(self))]
+        if stack:
+            frames = np.stack(frames, axis=0)
         return frames
 
     def cvt2frames(

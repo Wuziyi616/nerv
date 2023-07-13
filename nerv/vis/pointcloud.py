@@ -2,8 +2,7 @@ import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
 
-from nerv.utils.tensor import to_numpy
-from nerv.utils.misc import assert_array_shape
+from nerv.utils import to_numpy, assert_array_shape
 
 
 def np_to_o3d_pointcloud(xyz, color=None):

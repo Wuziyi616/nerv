@@ -4,6 +4,18 @@ import torch
 import torch.distributed as dist
 
 
+def th_cat(tensor_lst, dim=0):
+    if len(tensor_lst) == 0:
+        return torch.tensor([])
+    return torch.cat(tensor_lst, dim=dim)
+
+
+def th_stack(tensor_lst, dim=0):
+    if len(tensor_lst) == 0:
+        return torch.tensor([])
+    return torch.stack(tensor_lst, dim=dim)
+
+
 def to_numpy(tensor):
     if isinstance(tensor, torch.Tensor):
         return tensor.detach().cpu().numpy()

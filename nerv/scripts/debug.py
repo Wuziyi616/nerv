@@ -16,6 +16,6 @@ def load_params(params):
         params = params[:-3]
     sys.path.append(os.path.dirname(params))
     params = importlib.import_module(os.path.basename(params))
-    params = params.SlotAttentionParams()
+    params = params.BaseParams()
     model = build_model(params)
     return params, model

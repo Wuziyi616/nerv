@@ -4,8 +4,8 @@ import cv2
 import six
 import numpy as np
 
-from nerv.utils.misc import convert4save
-from nerv.utils.io import check_file_exist, mkdir_or_exist
+from .misc import convert4save
+from .io import check_file_exist, mkdir_or_exist
 
 
 def read_img(img_or_path, flag=cv2.IMREAD_COLOR):

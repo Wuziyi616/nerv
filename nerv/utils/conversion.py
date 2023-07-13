@@ -70,6 +70,14 @@ def merge_list(in_list):
     return out_list
 
 
+def subsample_list(lst, num, offset=0):
+    """Sample `num` items from a `lst` by taking every k-th element."""
+    assert len(lst) >= num, f'{len(lst)=} is smaller than {num=}'
+    assert num >= 1, f'{num=}'
+    k = len(lst) // num
+    return lst[offset::k][:num]
+
+
 def list2str(lst):
     """Convert [a, b, ..., x] to 'a_b_..._x'."""
     return '_'.join(str(item) for item in lst)

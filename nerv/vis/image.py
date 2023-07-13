@@ -1,5 +1,9 @@
+import copy
+
+import cv2
 import numpy as np
 from PIL import Image
+import matplotlib
 import matplotlib.pyplot as plt
 
 import torch
@@ -58,3 +62,69 @@ def plot_imgs_grid(imgs, grids=None, figsize=None, title=None, show=True):
 
     if show:
         plt.show()
+
+
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def cv2_put_text_lines(img, label, org, color, fontScale=0.5, thickness=1):
+    """Put text lines (splited with `\n`) on an image."""
+    lines = label.split('\n')
+    for i, line in enumerate(lines):
+        (l_w, l_h_no_baseline), baseline = cv2.getTextSize(
+            line,
+            fontFace=FONT,
+            fontScale=fontScale,
+            thickness=thickness,
+        )
+        l_h = l_h_no_baseline + baseline + 2
+        cv2.putText(
+            img,
+            line,
+            org=org,
+            fontFace=FONT,
+            fontScale=fontScale,
+            color=color,
+            thickness=thickness)
+        org = (org[0], org[1] + l_h)
+
+
+def cv2_draw_bboxes(img, boxes, labels, colors, fontsize=0.5, thickness=1):
+    """Draw bboxes on an image with labels and captions.
+
+    This is much faster than torchvision.ops.draw_bounding_boxes
+    """
+    img = copy.deepcopy(img)  # avoid in-place modification
+
+    if colors is None:
+        colors = cv2.applyColorMap(
+            np.arange(0, 255).astype(np.uint8), cv2.COLORMAP_HSV)
+        colors = [tuple(*item) for item in colors.tolist()]
+    elif not isinstance(colors, (list, tuple)):
+        colors = [colors] * len(boxes)
+
+    if isinstance(colors[0], str):
+        assert isinstance(colors, (list, tuple))
+        colors = [
+            tuple(int(x * 255) for x in matplotlib.colors.to_rgb(c))
+            for c in colors
+        ]  # convert str-based colors to (R, G, B) colors
+
+    img = to_vis(img)
+    if isinstance(boxes, torch.Tensor):
+        boxes = boxes.cpu().numpy()
+    for i in range(boxes.shape[0]):
+        pt1 = (int(boxes[i, 0]), int(boxes[i, 1]))
+        pt2 = (int(boxes[i, 2]), int(boxes[i, 3]))
+        label = labels[i]
+        color = colors[i % len(colors)]
+        cv2.rectangle(img, pt1, pt2, color, thickness=thickness)
+        cv2_put_text_lines(
+            img,
+            label,
+            org=(pt1[0], pt1[1]),
+            color=color,
+            fontScale=fontsize,
+            thickness=thickness)
+
+    return img

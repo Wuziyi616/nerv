@@ -12,10 +12,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
-from nerv.utils.io import mkdir_or_exist
-from nerv.utils.misc import AverageMeter, MeanMetric, sort_file_by_time
-from nerv.utils.tensor import ddp_all_gather
-from nerv.utils.conversion import is_list_of
+from nerv.utils import mkdir_or_exist, AverageMeter, MeanMetric, \
+    sort_file_by_time, ddp_all_gather, is_list_of
 from nerv.training.lr import get_lr
 from nerv.training.model import BaseModel
 from nerv.training.params import BaseParams

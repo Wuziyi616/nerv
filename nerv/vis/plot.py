@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from nerv.utils.misc import to_numpy
+from nerv.utils import to_numpy
 
 
 def get_lim(x):

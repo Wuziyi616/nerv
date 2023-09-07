@@ -514,7 +514,7 @@ def read_video_clip(path):
     return VideoFileClip(path)
 
 
-def stack_video_clips(clips, nrow):
+def stack_video_clips(clips, nrow, pad_value=(255, 255, 255)):
     """Stack the video clips into a grid."""
     assert isinstance(clips[0], VideoFileClip)
     ncol = len(clips) // nrow
@@ -522,7 +522,7 @@ def stack_video_clips(clips, nrow):
     stack_clips = [[] for _ in range(nrow)]
     for i, clip in enumerate(clips):
         stack_clips[i // ncol].append(clip)
-    return clips_array(stack_clips)
+    return clips_array(stack_clips, bg_color=pad_value)
 
 
 def vstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
@@ -540,7 +540,7 @@ def vstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
                 bottom = 0
             clips[i] = clips[i].margin(
                 top=top, bottom=bottom, color=pad_value)
-    return clips_array([[clip] for clip in clips])
+    return clips_array([[clip] for clip in clips], bg_color=pad_value)
 
 
 def hstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
@@ -558,7 +558,7 @@ def hstack_video_clips(clips, padding=2, pad_value=(255, 255, 255)):
                 right = 0
             clips[i] = clips[i].margin(
                 left=left, right=right, color=pad_value)
-    return clips_array([clips])
+    return clips_array([clips], bg_color=pad_value)
 
 
 def save_video_clip(clip, path):

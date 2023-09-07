@@ -43,18 +43,25 @@ def main(params):
             new_path = f'/checkpoint/{usr}/{SLURM_JOB_ID}/'
             # `ckp_path` might exist, which means we are resuming training
             # retrieve the old slurm id so that we can resume the wandb run!
-            # also move everything to the new dir as the old dir may be purged
             if os.path.exists(ckp_path):
-                # find slurm_id
-                slurm_id = find_old_slurm_id(ckp_path)
-                if slurm_id is None:
-                    slurm_id = SLURM_JOB_ID
-                wandb_name = wandb_id = f'{exp_name}-{slurm_id}'
-                # move things
-                for f in sort_file_by_time(glob_all(ckp_path)):  # 1st - oldest
-                    if 'SLURM_JOB_FINISHED' not in f:
-                        os.system(f'mv {f} {new_path}')
-                # remove old dir
+                # find slurm_id(s)
+                # ID of the last time, if changed, need to move files here
+                ckp_slurm_id = os.readlink(ckp_path).rstrip('/').split('/')[-1]
+                # ID of the first time, used for resuming wandb
+                first_slurm_id = find_old_slurm_id(ckp_path)
+                if first_slurm_id is None:
+                    first_slurm_id = SLURM_JOB_ID
+                wandb_name = wandb_id = f'{exp_name}-{first_slurm_id}'
+                # move everything to the new dir as the old dir may be purged
+                if str(ckp_slurm_id) != str(SLURM_JOB_ID):
+                    for f in sort_file_by_time(glob_all(ckp_path)):
+                        if 'SLURM_JOB_FINISHED' not in f:
+                            os.system(f'mv {f} {new_path}')
+                # using the same dir, only remove `SLURM_JOB_FINISHED`
+                else:
+                    fn = os.path.join(ckp_path, 'SLURM_JOB_FINISHED')
+                    os.system(f'rm -rf {fn}')
+                # remove old dir (the soft link)
                 os.system(f'rm -rf {ckp_path}')
             assert not os.path.exists(ckp_path)
             os.system(f'ln -s {new_path} {ckp_path}')

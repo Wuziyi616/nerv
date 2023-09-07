@@ -151,3 +151,12 @@ def save_video(video, save_path, fps=30, codec='mp4v'):
     for i in range(video.shape[0]):
         out.write(video[i])
     out.release()
+
+
+def timeit(func, iters=10, *args, **kwargs):
+    """Measure the time of a function."""
+    start = time.time()
+    for _ in range(iters):
+        _ = func(*args, **kwargs)
+    end = time.time()
+    return (end - start) / iters

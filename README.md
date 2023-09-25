@@ -1,6 +1,6 @@
 # NERV
 
-<p align="center"><img src="src/NERV.jpg" alt="NERV" width="800"/></p>
+<p align="center"><img src="./assets/NERV.jpg" alt="NERV" width="800"/></p>
 
 > God's in his heaven. All's right with the world!
 > — Pippa Passes

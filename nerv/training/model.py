@@ -8,6 +8,7 @@ class BaseModel(nn.Module):
         super().__init__()
 
     def forward(self, data_dict):
+        """Forward function."""
         pass
 
     def calc_train_loss(self, data_dict, out_dict):

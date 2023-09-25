@@ -240,3 +240,10 @@ def glob_all(dir_path, only_dir=False, sort=True, strip=True):
     if strip:
         results = [res.rstrip('/') for res in results]
     return results
+
+
+def get_real_path(path):
+    """Get the real path of a soft link."""
+    while os.path.islink(path):
+        path = os.readlink(path)
+    return path

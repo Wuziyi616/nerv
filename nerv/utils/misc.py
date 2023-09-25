@@ -65,11 +65,21 @@ def array_equal(a, b):
 
 
 def array_in_list(array, lst):
-    """Judge whether an array is in a list."""
+    """Check whether an array is in a list."""
     for v in lst:
         if array_equal(array, v):
             return True
     return False
+
+
+def get_key_from_value(d, v):
+    """Get the key of a value in a dict."""
+    k = [k for k, v_ in d.items() if v_ == v]
+    if k > 1:
+        raise ValueError('Duplicate values in the dict!')
+    elif k == 1:
+        return k[0]
+    return None
 
 
 def set_seed(seed=1, deterministic=False):

@@ -13,7 +13,7 @@ import torch.optim as optim
 import torch.distributed as dist
 
 from nerv.utils import mkdir_or_exist, AverageMeter, MeanMetric, \
-    sort_file_by_time, ddp_all_gather, is_list_of
+    sort_file_by_time, ddp_all_gather, is_list_of, glob_all
 from nerv.training.lr import get_lr
 from nerv.training.model import BaseModel
 from nerv.training.params import BaseParams
@@ -799,15 +799,14 @@ class BaseMethod(nn.Module):
 
         # automatically detect checkpoints
         if auto_detect and os.path.exists(self.ckp_path):
-            ckp_files = os.listdir(self.ckp_path)
-            ckp_files = [ckp for ckp in ckp_files if ckp.endswith('.pth')]
+            ckp_files = glob_all(self.ckp_path)
+            ckp_files = [
+                ckp for ckp in ckp_files
+                if ckp.endswith('.pth') and 'best' not in os.path.basename(ckp)
+            ]
             if ckp_files:
-                ckp_files = sorted(
-                    ckp_files,
-                    key=lambda x: os.path.getmtime(
-                        os.path.join(self.ckp_path, x)))
-                last_ckp = ckp_files[-1]
-                ckp_path = os.path.join(self.ckp_path, last_ckp)
+                ckp_files = sort_file_by_time(ckp_files)
+                ckp_path = ckp_files[-1]
                 try:
                     ckp = torch.load(ckp_path, map_location='cpu')
                 # in case the last ckp is corrupted
@@ -817,7 +816,7 @@ class BaseMethod(nn.Module):
                         os.remove(ckp_path)
                     ckp_path = None
                     if len(ckp_files) > 1:
-                        ckp_path = os.path.join(self.ckp_path, ckp_files[-2])
+                        ckp_path = ckp_files[-2]
                         ckp = torch.load(ckp_path, map_location='cpu')
                 print(f'INFO: automatically detect checkpoint {ckp_path}')
 

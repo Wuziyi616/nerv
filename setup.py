@@ -1,9 +1,20 @@
 from setuptools import find_packages, setup
 
 install_requires = [
-    'numpy', 'pyyaml', 'six', 'tqdm', 'opencv-python', 'matplotlib', 'open3d',
-    'wandb', 'moviepy', 'imageio', 'torch', 'torchvision', 'torchmetrics',
-    'pytorch-lightning'
+    'numpy',
+    'pyyaml',
+    'six',
+    'tqdm',
+    'opencv-python',
+    'matplotlib',
+    # 'open3d',  # optional, only used for point cloud visualization
+    'wandb',
+    'moviepy',
+    'imageio',
+    'torch',
+    'torchvision',
+    'torchmetrics',
+    'pytorch-lightning',
 ]
 
 

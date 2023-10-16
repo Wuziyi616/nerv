@@ -4,7 +4,7 @@ tqdm
 numpy
 wandb
 pyyaml
-open3d
+# open3d  # optional, only used for point cloud visualization
 matplotlib
 opencv-python
 moviepy

@@ -1,5 +1,4 @@
 import numpy as np
-import open3d as o3d
 import matplotlib.pyplot as plt
 
 from nerv.utils import to_numpy, assert_array_shape
@@ -16,6 +15,7 @@ def np_to_o3d_pointcloud(xyz, color=None):
     Returns:
         o3d.geometry.PointCloud: open3d point cloud.
     """
+    import open3d as o3d
     xyz = to_numpy(xyz)
     if color is not None:
         color = to_numpy(color)
@@ -42,6 +42,7 @@ def np_to_o3d_pointcloud(xyz, color=None):
 
 def visualize_3d_point_cloud_o3d(xyz, color=None, **kwargs):
     """Visualize 3d point cloud with open3d."""
+    import open3d as o3d
     pcd = np_to_o3d_pointcloud(xyz, color)
     o3d.visualization.draw_geometries([pcd], **kwargs)
 

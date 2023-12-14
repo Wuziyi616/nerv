@@ -19,7 +19,7 @@ install_requires = [
 
 
 def readme():
-    with open('README.md') as f:
+    with open('README.md', 'r', encoding='UTF-8') as f:
         content = f.read()
     return content
 

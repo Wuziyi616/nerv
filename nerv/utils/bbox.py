@@ -116,9 +116,11 @@ def batch_iou_xywh(
     x2y2 = min_fn(bbox1[..., :2] + bbox1[..., 2:4] / 2.,
                   bbox2[..., :2] + bbox2[..., 2:4] / 2.)
     wh = max_fn(0., x2y2 - x1y1)
-    wh = wh[..., 0] * wh[..., 1]
-    union = bbox1[..., 2] * bbox1[..., 3] + bbox2[..., 2] * bbox2[..., 3] - wh
-    o = wh / union
+    intersect = wh[..., 0] * wh[..., 1]
+    union = bbox1[..., 2] * bbox1[..., 3] \
+        + bbox2[..., 2] * bbox2[..., 3] \
+        - intersect
+    o = intersect / union
 
     # set IoU of between different class objects to 0
     if bbox1.shape[-1] == 5 and bbox2.shape[-1] == 5:
@@ -152,11 +154,11 @@ def batch_iou_xyxy(
     x1y1 = max_fn(bbox1[..., :2], bbox2[..., :2])
     x2y2 = min_fn(bbox1[..., 2:4], bbox2[..., 2:4])
     wh = max_fn(0., x2y2 - x1y1)
-    wh = wh[..., 0] * wh[..., 1]
+    intersect = wh[..., 0] * wh[..., 1]
     union = (bbox1[..., 2] - bbox1[..., 0]) * (bbox1[..., 3] - bbox1[..., 1]) \
         + (bbox2[..., 2] - bbox2[..., 0]) * (bbox2[..., 3] - bbox2[..., 1]) \
-        - wh
-    o = wh / union
+        - intersect
+    o = intersect / union
 
     # set IoU of between different class objects to 0
     if bbox1.shape[-1] == 5 and bbox2.shape[-1] == 5:

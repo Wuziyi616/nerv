@@ -14,7 +14,7 @@ from moviepy.editor import VideoFileClip, clips_array
 
 from .image import resize
 from .misc import convert4save
-from .io import check_file_exist, mkdir_or_exist, scandir
+from .io import check_file_exist, mkdir_or_exist, scandir, get_suffix
 
 
 class Cache(object):
@@ -71,6 +71,7 @@ class VideoReader(object):
     def __init__(self, filename, cache_capacity=-1, to_rgb=False):
         check_file_exist(filename, 'Video file not found: ' + filename)
         self.filename = filename
+        self.file_type = get_suffix(filename)
         self._vcap = cv2.VideoCapture(filename)
         self._cache = Cache(cache_capacity) if cache_capacity > 0 else None
         self._to_rgb = to_rgb  # convert img from GBR to RGB when reading
@@ -205,6 +206,37 @@ class VideoReader(object):
         if stack:
             frames = np.stack(frames, axis=0)
         return frames
+
+    def change_fps(self, fps=None, fps_mul=None, output_file=None):
+        """Change the fps of the video (keep all the frames) and save it.
+
+        Args:
+            fps (None or int): target fps. Default: None.
+            fps_mul (None or float): multiply the fps by this factor.
+                Default: None.
+            output_file (None or str): output filename. Default: None.
+        """
+        assert fps is not None or fps_mul is not None, \
+            'fps or fps_mul must be specified'
+        assert not (fps is not None and fps_mul is not None), \
+            'fps and fps_mul cannot be specified at the same time'
+        if fps_mul is not None:
+            assert fps_mul > 0, 'fps_mul must be positive'
+            fps = int(round(self.fps * fps_mul))
+        assert isinstance(fps, int) and fps > 0, \
+            'fps must be a positive integer'
+        # read in all the frames, then save it with the new fps
+        frames = self.read_video(stack=True)
+        if output_file is None:
+            output_file = self.filename.replace(
+                f'.{self.file_type}', f'-fps_{fps}.mp4')
+            if self.file_type != 'mp4':
+                print('Warning: only support mp4 format for now!')
+        array2video(frames, output_file, fps=fps, rgb2bgr=False)
+
+    def to_gif(self):
+        """Save the video as a gif file."""
+        video2gif(self.filename)
 
     def cvt2frames(
         self,
@@ -570,3 +602,9 @@ def mp42gif(path):
     """Read a mp4 video and save it as a gif."""
     video = read_video_clip(path)
     video.write_gif(path.replace('.mp4', '.gif'))
+
+
+def video2gif(path):
+    """Convert a video in any format to a gif."""
+    video = read_video_clip(path)
+    video.write_gif(path.replace(f'.{get_suffix(path)}', '.gif'))

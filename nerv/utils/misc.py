@@ -148,11 +148,12 @@ def convert4save(array, is_video=False):
         return _convert4save_img(array)
 
 
-def save_video(video, save_path, fps=30, codec='mp4v'):
+def save_video(video, save_path, fps=30, codec='mp4v', rgb2bgr=True):
     """video: np.ndarray of shape [M, H, W, 3]"""
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     video = convert4save(video, is_video=True)
-    video = video[..., [2, 1, 0]]
+    if rgb2bgr:  # we assume that `video` is in RGB format, cv2 requires BGR
+        video = video[..., [2, 1, 0]]
     H, W = video.shape[-3:-1]
     assert save_path.split('.')[-1] == 'mp4'  # save as mp4 file
     # opencv has opposite dimension definition as numpy

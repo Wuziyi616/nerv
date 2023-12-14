@@ -364,16 +364,16 @@ def array2video(video_array, video_file, fps=30, rgb2bgr=True):
     video_array = convert4save(video_array, is_video=True)
     # cv2 has different color channel order GBR
     if rgb2bgr:
-        video = video_array[..., [2, 1, 0]]
+        video_array = video_array[..., [2, 1, 0]]
     # opencv has opposite dimension definition as numpy
-    height, width = video.shape[1:3]
+    height, width = video_array.shape[1:3]
     resolution = (width, height)
     mkdir_or_exist(path.dirname(video_file))
     fourcc = 'mp4v'  # corresponds to mp4
     vwriter = cv2.VideoWriter(video_file, VideoWriter_fourcc(*fourcc), fps,
                               resolution)
-    for i in range(video.shape[0]):
-        vwriter.write(video[i])
+    for i in range(video_array.shape[0]):
+        vwriter.write(video_array[i])
     vwriter.release()
 
 

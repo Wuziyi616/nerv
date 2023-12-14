@@ -237,17 +237,20 @@ class BaseMethod(nn.Module):
         """
         self._training_epoch_start()
 
+        # set the `epoch` in `self.train_loader.sampler`!
+        # see: https://github.com/pytorch/pytorch/blob/afe6d272c69ae5671ca0df978be8fff7e8e4ed4e/torch/utils/data/distributed.py#L98
+        self.train_loader.sampler.epoch = self.epoch
         # use iter dataloader in order to save its state
         self.iter_train_loader = iter(self.train_loader)
         train_steps = (
             len(self.train_loader.sampler) -
-            self.train_loader.sampler.real_counter(
-                self.iter_train_loader)) // self.params.train_batch_size
+            self.train_loader.sampler.real_counter(self.iter_train_loader)
+        ) // (self.params.train_batch_size * self.gpus)
         tqdm_desc = f'Train epoch {self.epoch}, rank {self.local_rank}'
         with tqdm(total=train_steps, desc=tqdm_desc) as t:
             t1 = time.time()
             for batch_idx, batch_data in enumerate(self.iter_train_loader):
-                # torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()  # bad for GPU utils
 
                 # data time
                 t2 = time.time()

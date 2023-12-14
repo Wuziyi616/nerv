@@ -33,6 +33,9 @@ class _StatefulSampler:
         self.indices = None
         self.counter = None
 
+        # for compatibility with DistributedSampler
+        self.epoch = 0
+
     def _init_index(self):
         pass
 
@@ -123,6 +126,8 @@ class StatefulDistributedSampler(DistributedSampler, _StatefulSampler):
             shuffle=shuffle,
             seed=seed,
             drop_last=drop_last)
+        assert self.epoch == 0, \
+            'every DDP process should have the same `epoch` value'
 
         # initialize dataloader index
         self._init_index()
@@ -133,7 +138,13 @@ class StatefulDistributedSampler(DistributedSampler, _StatefulSampler):
 
         # construct index
         if self.shuffle:
-            indices = torch.randperm(len(self.dataset))
+            # set seed when random shuffle the indices
+            # this is to make sure each DDP process has the same shuffle result
+            # so that each DDP process will read non-overlapping data chunks
+            # see: https://github.com/pytorch/pytorch/blob/afe6d272c69ae5671ca0df978be8fff7e8e4ed4e/torch/utils/data/distributed.py#L98
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch)
+            indices = torch.randperm(len(self.dataset), generator=g)
         else:
             indices = torch.arange(len(self.dataset))
         indices = indices.tolist()

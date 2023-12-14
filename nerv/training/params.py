@@ -20,9 +20,9 @@ class BaseParams(object):
 
     # data settings
     data_root = ''
-    train_batch_size = 64 // gpus
+    train_batch_size = 64 // gpus  # batch size per gpu
     val_batch_size = train_batch_size * 2
-    num_workers = 8
+    num_workers = 8  # workers per gpu
     grad_accum_steps = 1  # gradient accumulation
 
     # loss configs

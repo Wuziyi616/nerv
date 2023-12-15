@@ -207,7 +207,13 @@ class VideoReader(object):
             frames = np.stack(frames, axis=0)
         return frames
 
-    def change_fps(self, fps=None, fps_mul=None, output_file=None):
+    def change_fps(
+        self,
+        fps=None,
+        fps_mul=None,
+        output_file=None,
+        codec='mp4v',
+    ):
         """Change the fps of the video (keep all the frames) and save it.
 
         Args:
@@ -232,7 +238,7 @@ class VideoReader(object):
                 f'.{self.file_type}', f'-fps_{fps}.mp4')
             if self.file_type != 'mp4':
                 print('Warning: only support mp4 format for now!')
-        array2video(frames, output_file, fps=fps, rgb2bgr=False)
+        save_video(frames, output_file, fps=fps, codec=codec, rgb2bgr=False)
 
     def to_gif(self):
         """Save the video as a gif file."""
@@ -349,32 +355,32 @@ def frames2video(
     vwriter.release()
 
 
-def array2video(video_array, video_file, fps=30, rgb2bgr=True):
-    """Write a 4D array to a video file.
+def save_video(video, save_path, fps=30, codec='mp4v', rgb2bgr=True):
+    """Save a video to disk. This function takes care of all the conversions.
 
     Args:
-        video (np.ndarray or torch.Tensor): array of shape [M, H, W, 3].
-        video_file (str): output video filename.
-        fps (int, optional): fps of the output video. Default: 30.
-        rgb2bgr (bool, optional): whether convert the color channel.
-            Default: True.
+        video (np.ndarray or torch.Tensor): [M, H, W, 3] or [M, 3, H, W].
+        save_path (str): path to save the video.
+        fps (int, optional): fps of the video. Default: 30.
+        codec (str, optional): codec of the video. Default: 'mp4v'.
+            If you want to embed the video in a html file, use 'avc1'.
+        rgb2bgr (bool, optional): whether to convert RGB to BGR. Default: True.
     """
-    assert video_file.split('.')[-1] == 'mp4', \
+    assert save_path.split('.')[-1] == 'mp4', \
         'currently only support mp4 format'
-    video_array = convert4save(video_array, is_video=True)
+    video = convert4save(video, is_video=True)
     # cv2 has different color channel order GBR
     if rgb2bgr:
-        video_array = video_array[..., [2, 1, 0]]
+        video = video[..., [2, 1, 0]]
+    H, W = video.shape[-3:-1]
     # opencv has opposite dimension definition as numpy
-    height, width = video_array.shape[1:3]
-    resolution = (width, height)
-    mkdir_or_exist(path.dirname(video_file))
-    fourcc = 'mp4v'  # corresponds to mp4
-    vwriter = cv2.VideoWriter(video_file, VideoWriter_fourcc(*fourcc), fps,
-                              resolution)
-    for i in range(video_array.shape[0]):
-        vwriter.write(video_array[i])
-    vwriter.release()
+    size = (W, H)
+    if '/' in save_path and not save_path.startswith('./'):
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*codec), fps, size)
+    for i in range(video.shape[0]):
+        out.write(video[i])
+    out.release()
 
 
 def check_ffmpeg(func):

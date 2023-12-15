@@ -286,7 +286,20 @@ class BaseMethod(nn.Module):
 
     def _loss_function(self, batch_data):
         """Compute and aggregate losses."""
-        out_dict = self.model.module.loss_function(batch_data)
+        raise NotImplementedError(
+            '`method._loss_function()` has been deprecated in nerv v0.4.0, '
+            'please check the required nerv version in the README file.')
+
+    def _training_loss_function(self, data_dict):
+        """Compute and aggregate losses."""
+        out_dict = self.model(data_dict)
+        out_dict = self.model.module.calc_train_loss(data_dict, out_dict)
+        # batch_size for statistics accumulation
+        for v in data_dict.values():
+            if isinstance(v, torch.Tensor):
+                out_dict['batch_size'] = v.shape[0]
+                break
+        # accumulate losses, i.e. weighted sum
         assert 'loss' not in out_dict.keys()
         loss = self._make_tensor(0.)
         for loss_name, loss_value in out_dict.items():
@@ -302,7 +315,7 @@ class BaseMethod(nn.Module):
 
     def _training_step_fp32(self, batch_data):
         """Loss backward and optimize in the normal FP32 setting."""
-        out_dict = self._loss_function(batch_data)
+        out_dict = self._training_loss_function(batch_data)
 
         # normalize loss to account for batch accumulation
         loss = out_dict['loss'] / self.grad_accum_steps
@@ -326,7 +339,7 @@ class BaseMethod(nn.Module):
     def _training_step_fp16(self, batch_data):
         """Loss backward and optimize in FP16 mixed precision setting."""
         with torch.cuda.amp.autocast():
-            out_dict = self._loss_function(batch_data)
+            out_dict = self._training_loss_function(batch_data)
 
             # normalize loss to account for batch accumulation
             loss = out_dict['loss'] / self.grad_accum_steps

@@ -22,11 +22,13 @@ class BaseModel(nn.Module):
 
     def loss_function(self, data_dict):
         """General warpper for loss calculation."""
+        assert not self.training, \
+            '`model.calc_train_loss()` should be called outside the model. ' \
+            'This change is introduced in nerv v0.4.0 to ensure gradient ' \
+            'synchronization across GPUs in DDP training.' \
+            'Refer to https://github.com/Wuziyi616/nerv/issues/1 for details.'
         out_dict = self.forward(data_dict)
-        if self.training:
-            out_dict = self.calc_train_loss(data_dict, out_dict)
-        else:
-            out_dict = self.calc_eval_loss(data_dict, out_dict)
+        out_dict = self.calc_eval_loss(data_dict, out_dict)
         # batch_size for statistics accumulation
         for v in data_dict.values():
             if isinstance(v, torch.Tensor):

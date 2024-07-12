@@ -245,7 +245,7 @@ class BaseMethod(nn.Module):
         train_steps = (
             len(self.train_loader.sampler) -
             self.train_loader.sampler.real_counter(self.iter_train_loader)
-        ) // (self.params.train_batch_size * self.gpus)
+        ) // self.params.train_batch_size
         tqdm_desc = f'Train epoch {self.epoch}, rank {self.local_rank}'
         with tqdm(total=train_steps, desc=tqdm_desc) as t:
             t1 = time.time()

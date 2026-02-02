@@ -7,7 +7,7 @@ pyyaml
 # open3d  # optional, only used for point cloud visualization
 matplotlib
 opencv-python
-moviepy
+moviepy==1.0.3  # >=2.0.0 won't work
 imageio
 
 # please install PyTorch + CUDA manually (conda is recommended)
